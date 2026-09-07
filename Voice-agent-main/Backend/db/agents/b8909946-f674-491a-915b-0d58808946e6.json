@@ -1,0 +1,76 @@
+{
+    "agent_name": "Integration Test Agent",
+    "voice_id": "en-IN-PrabhatNeural",
+    "conversation_flow_id": "flow_c7f4a83f",
+    "global_prompt": "You are a test agent...",
+    "conversationFlow": {
+        "global_prompt": "You are a test agent...",
+        "start_node_id": "root_greeting",
+        "nodes": [
+            {
+                "id": "root_greeting",
+                "name": "Initial Greeting",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "Greet the user warmly as Integration Test Agent and confirm identity using the lead name."
+                },
+                "response": "Hello, this is Integration Test Agent from the Real Estate team. Am I speaking with {{name}}?",
+                "intent_triggers": [
+                    "call_connected"
+                ],
+                "edges": [
+                    {
+                        "id": "to_discovery",
+                        "condition": "user responds",
+                        "destination_node_id": "discovery"
+                    }
+                ]
+            },
+            {
+                "id": "discovery",
+                "name": "Information Discovery",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "Collect information and answer questions."
+                },
+                "response": "I'd love to share more details. What are your thoughts?",
+                "collects": [
+                    "Call Status",
+                    "Interested"
+                ],
+                "edges": [
+                    {
+                        "id": "to_end",
+                        "condition": "conversation finished",
+                        "destination_node_id": "end_node"
+                    }
+                ]
+            },
+            {
+                "id": "end_node",
+                "name": "Conclusion",
+                "type": "end",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "End the call politely."
+                },
+                "response": "Thank you for your time. Goodbye!"
+            }
+        ]
+    },
+    "tts_provider": "smallest",
+    "stt_provider": "deepgram",
+    "provider_config": {
+        "stt_provider": "deepgram",
+        "tts_provider": "smallest",
+        "cartesia_voice_id": "95d51f79-c397-46f9-b49a-23763d3eaa2d",
+        "parler_description": ""
+    },
+    "agent_metadata": {
+        "agent_type": "real_estate_sales",
+        "assigned_email": "maniarasan@jobjockey.in",
+        "client_id": "user-2405b75e35da"
+    }
+}

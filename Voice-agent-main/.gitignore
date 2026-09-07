@@ -1,0 +1,48 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Secrets & Local Environment
+.env
+.env.local
+Backend/.env
+Backend/.env.local
+frontend-next/.env.local
+
+# Allow env example templates
+!.env.example
+!Backend/.env.example
+!frontend-next/.env.example
+
+# Environment / Virtualenv
+.venv/
+venv/
+env/
+Backend/.venv/
+Backend/venv/
+
+# Dependencies & Build artifacts (Friend runs npm install / pip install)
+node_modules/
+frontend-next/node_modules/
+.next/
+frontend-next/.next/
+build/
+dist/
+.hf_cache/
+Backend/.hf_cache/
+
+# Logs & Temporary Media
+*.log
+voice_agent.log
+Backend/voice_agent.log
+Backend/audio/
+Backend/output/
+Backend/recordings/
+
+# IDE / OS junk
+.vscode/
+.idea/
+.DS_Store
+.agent/
+.graphify-out/
