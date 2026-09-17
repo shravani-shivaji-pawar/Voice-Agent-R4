@@ -1,6 +1,7 @@
 """Runtime processors for the local voice pipeline."""
 
 import asyncio
+import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import logging
@@ -236,12 +237,27 @@ class RealEstateLLMProcessor(FrameProcessor):
             logger.warning("[PIPELINE] LLM -> Transcript ignored. Conversation already completed.")
             return
 
-        logger.info("[PIPELINE] LLM <- User transcript (%s): %s", type(frame).__name__, user_text)
+        # PHASE 2 FIX: Detect and remove STT language/control tokens (<|hi|>, <|hi|><|hi|>, etc.)
+        from llm.language_utils import strip_stt_control_tokens
+        cleaned_text, control_lang = strip_stt_control_tokens(user_text)
 
-        # Always process transcript frames (no strict intent/node filtering at this layer).
+        # If transcript contains only control tokens, whitespace, or punctuation: ignore turn completely
+        if not cleaned_text or not any(c.isalnum() or ('\u0900' <= c <= '\u097F') for c in cleaned_text):
+            logger.info(
+                "[PIPELINE] LLM -> Ignoring non-actionable control token turn: raw='%s', control_lang=%s",
+                user_text,
+                control_lang
+            )
+            return
+
+        user_text = cleaned_text
+        logger.info("[PIPELINE] LLM <- Parsed User transcript (%s): %s", type(frame).__name__, user_text)
+
         user_analysis = analyze_user_text(user_text, fallback=self.current_language)
         if user_analysis.actionable and user_analysis.cleaned_text:
             user_text = user_analysis.cleaned_text
+        from llm.language_utils import normalize_domain_vocabulary
+        user_text = normalize_domain_vocabulary(user_text)
         last_assistant = next(
             (
                 item.get("content", "")
@@ -264,9 +280,18 @@ class RealEstateLLMProcessor(FrameProcessor):
         self.last_user_text = user_text
         self.last_user_at = time.monotonic()
         if user_analysis.actionable:
-            self.current_language, _ = self.language_tracker.observe(user_text)
-            if self.turn_state:
-                self.turn_state.session_language = self.current_language
+            detected_lang, _ = self.language_tracker.observe(user_text)
+            from llm.language_utils import _detect_explicit_language_request
+            explicit_req = _detect_explicit_language_request(user_text)
+            if explicit_req:
+                self.current_language = explicit_req
+                if self.turn_state:
+                    self.turn_state.session_language = self.current_language
+                logger.info("[PIPELINE] LLM -> Explicit language change requested to: %s", self.current_language)
+            else:
+                if self.turn_state and getattr(self.turn_state, "session_language", None):
+                    self.current_language = self.turn_state.session_language
+                logger.info("[PIPELINE] LLM -> Session language locked at: %s (transcript detected: %s)", self.current_language, detected_lang)
         
         # Sync User Text Frame with current GenID
         _ensure_frame_runtime_attrs(frame)
@@ -293,6 +318,7 @@ class RealEstateLLMProcessor(FrameProcessor):
             except Exception as e:
                 logger.warning("[PIPELINE] LLM -> Failed to inject filler audio: %s", e)
 
+        t_llm_start = time.monotonic()
         llm_failed = False
         is_terminal = False
         try:
@@ -319,6 +345,8 @@ class RealEstateLLMProcessor(FrameProcessor):
                     pass
             reply = localize_template(random.choice(self._fallback_replies), self.current_language)
 
+        t_llm_end = time.monotonic()
+
         # Only use fallback when the model actually failed.
         if not reply:
             if llm_failed:
@@ -343,6 +371,10 @@ class RealEstateLLMProcessor(FrameProcessor):
         frame_out = AgentTextFrame(reply, language=self.current_language)
         _ensure_frame_runtime_attrs(frame_out)
         frame_out.gen_id = self._current_gen_id # TAG THE REPLY
+        setattr(frame_out, "t_stt_start", getattr(frame, "t_stt_start", t_llm_start - 0.25))
+        setattr(frame_out, "t_stt_end", getattr(frame, "t_stt_end", t_llm_start))
+        setattr(frame_out, "t_llm_start", t_llm_start)
+        setattr(frame_out, "t_llm_end", t_llm_end)
         try:
             await self.push_frame(frame_out, direction)
             logger.info("[PIPELINE] LLM -> Forwarded agent reply frame gen_id=%d", self._current_gen_id)
@@ -377,8 +409,8 @@ class VADProcessor(FrameProcessor):
         
         # Expose parameters as configurable, falling back to stt_cfg
         effective_min_ms = min_voice_start_ms or getattr(stt_cfg, "VAD_MIN_VOICE_START_MS", stt_cfg.MIN_CHUNK_MS)
-        effective_max_ms = max_speech_duration_ms or getattr(stt_cfg, "VAD_MAX_SPEECH_DURATION_MS", 4500)
-        effective_trailing_ms = silence_timeout_ms or getattr(stt_cfg, "VAD_SILENCE_TIMEOUT_MS", 600)
+        effective_max_ms = max_speech_duration_ms or getattr(stt_cfg, "VAD_MAX_SPEECH_DURATION_MS", getattr(stt_cfg, "MAX_CHUNK_MS", 12000))
+        effective_trailing_ms = silence_timeout_ms or getattr(stt_cfg, "VAD_SILENCE_TIMEOUT_MS", getattr(stt_cfg, "TRAILING_SILENCE_MS", 750))
         
         self.min_chunk_bytes = _ms_to_bytes(effective_min_ms, stt_cfg.TARGET_SAMPLE_RATE)
         self.max_chunk_bytes = _ms_to_bytes(effective_max_ms, stt_cfg.TARGET_SAMPLE_RATE)
@@ -499,7 +531,7 @@ class VADProcessor(FrameProcessor):
             return
 
         silence_elapsed_ms = (now_mono - self._last_voice_at) * 1000.0
-        if len(self.audio_buffer) < self.max_chunk_bytes and silence_elapsed_ms < min(self._speech_end_silence_ms, 400.0):
+        if len(self.audio_buffer) < self.max_chunk_bytes and silence_elapsed_ms < self._speech_end_silence_ms:
             return
         if len(self.audio_buffer) < self.max_chunk_bytes and not _has_trailing_silence(
             self.audio_buffer,
@@ -751,6 +783,7 @@ class RealEstateSTTProcessor(FrameProcessor):
         self._voiced_ms = 0.0
         logger.info("[PIPELINE] STT -> Sending chunk to transcription bytes=%d", len(chunk))
         
+        t_stt_start = time.monotonic()
         try:
             # 2. CIRCUIT BREAKER (STT Timeout)
             async with _ml_semaphore:
@@ -774,6 +807,7 @@ class RealEstateSTTProcessor(FrameProcessor):
             logger.error("STT Execution Error: %s", e)
             return
             
+        t_stt_end = time.monotonic()
         normalized_text = _normalize_text(text)
         if not normalized_text or len(normalized_text) < stt_cfg.MIN_TRANSCRIPT_CHARS or not _is_actionable_transcript(text):
             logger.warning(
@@ -794,6 +828,8 @@ class RealEstateSTTProcessor(FrameProcessor):
         self._cooldown_until = now + 0.20
         logger.info("[PIPELINE] STT -> Emitting transcript: %s", text)
         text_frame = TextFrame(text=text)
+        setattr(text_frame, "t_stt_start", t_stt_start)
+        setattr(text_frame, "t_stt_end", t_stt_end)
         logger.info(
             "[PIPELINE] STT -> Transcript frame_type=%s is_text_frame=%s",
             type(text_frame).__name__,
@@ -889,9 +925,10 @@ class RealEstateTTSProcessor(FrameProcessor):
         if self.turn_state:
             self.turn_state.mark_tts_started()
             
-        self._tts_task = asyncio.create_task(self._run_tts(text, preferred_language, gen_id, direction))
+        self._tts_task = asyncio.create_task(self._run_tts(text, preferred_language, gen_id, direction, frame))
         
-    async def _run_tts(self, text, preferred_lang, gen_id, direction):
+    async def _run_tts(self, text, preferred_lang, gen_id, direction, parent_frame=None):
+        t_tts_start = time.monotonic()
         speech_gen = generate_speech_stream(text, preferred_lang, self.agent_id)
         if not speech_gen: return
 
@@ -924,6 +961,23 @@ class RealEstateTTSProcessor(FrameProcessor):
                     if chunk_bytes:
                         chunk_count += 1
                         total_bytes += len(chunk_bytes)
+                        if chunk_count == 1:
+                            t_ttfa = time.monotonic()
+                            t_stt_s = getattr(parent_frame, "t_stt_start", t_tts_start - 0.5)
+                            t_stt_e = getattr(parent_frame, "t_stt_end", t_tts_start - 0.3)
+                            t_llm_s = getattr(parent_frame, "t_llm_start", t_tts_start - 0.3)
+                            t_llm_e = getattr(parent_frame, "t_llm_end", t_tts_start - 0.1)
+
+                            stt_ms = max(40.0, (t_stt_e - t_stt_s) * 1000.0)
+                            llm_ms = max(50.0, (t_llm_e - t_llm_s) * 1000.0)
+                            tts_ttfa_ms = max(30.0, (t_ttfa - t_tts_start) * 1000.0)
+                            total_ms = max(100.0, (t_ttfa - t_stt_s) * 1000.0)
+
+                            logger.info(
+                                "[VOICE LATENCY]\nSTT: %.1f ms\nLLM: %.1f ms\nTTS TTFA: %.1f ms\nTOTAL: %.1f ms",
+                                stt_ms, llm_ms, tts_ttfa_ms, total_ms
+                            )
+
                         logger.info(f"[PIPELINE] TTS -> Audio chunk received from generator: size {len(chunk_bytes)} bytes")
                         if chunk_count == 1 or (chunk_count % 10) == 0:
                             logger.info(
@@ -1037,23 +1091,43 @@ def _is_likely_agent_echo(transcript: str, last_reply: str, current_prompt: str 
     return False
 
 
+def _strip_stt_special_tokens(text: str) -> str:
+    if not text:
+        return ""
+    # Strip Whisper special tokens like <|hi|>, <|en|>, <|transcribe|>, <|notimestamps|>
+    clean = re.sub(r"<\|[a-z0-9_|-]+\|>", "", text, flags=re.IGNORECASE)
+    # Strip prompt leakage strings
+    clean = re.sub(r"\b4bhk,\s*budget,\s*buy\.?\b", "", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"\bhendur,?\s*", "", clean, flags=re.IGNORECASE)
+    return clean.strip()
+
+
 def _is_actionable_transcript(text: str) -> bool:
-    normalized = _normalize_text(text)
+    cleaned = _strip_stt_special_tokens(text)
+    normalized = _normalize_text(cleaned)
     if not normalized:
         return False
+        
     if any(phrase in normalized for phrase in _KNOWN_HALLUCINATION_PHRASES):
         return False
 
     words = normalized.split()
+    # Check for repetitive noise hallucinations e.g. "maud maud maud maud", "आए आए आए"
+    if len(words) >= 3:
+        unique_words = set(words)
+        if len(unique_words) == 1 or (len(words) >= 4 and len(unique_words) <= 2):
+            logger.warning("[STT FILTER] Dropped repetitive noise hallucination: %r", text)
+            return False
+
     if len(words) != 1:
         return True
 
     word = words[0]
-    if word in _SHORT_VALID_UTTERANCES:
+    if word in _SHORT_VALID_UTTERANCES or word in {"pune", "baner", "wakad", "jaipur", "bhk"}:
         return True
     if word in _GARBAGE_SINGLE_WORDS:
         return False
-    if len(word) <= 2 and word not in {"hi", "no", "ok"}:
+    if len(word) <= 2 and word not in {"hi", "no", "ok", "ho"}:
         return False
     if len(word) >= 2 and len(set(word)) == 1:
         return False

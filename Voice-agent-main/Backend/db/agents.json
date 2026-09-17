@@ -1,5 +1,25 @@
 [
     {
+        "id": "education_counselling",
+        "agent_id": "education_counselling",
+        "name": "Aarohi \u2014 Education Counselling Specialist",
+        "voice": "en-IN-NeerjaExpressiveNeural",
+        "language": "Multi (English, Hindi, Hinglish)",
+        "max_duration": 300,
+        "provider": "Groq / Smallest AI",
+        "script": "You are Aarohi, an AI Education Counsellor guiding students on courses, colleges, entrance exams, and study abroad options.",
+        "data_fields": [
+            "Current Qualification",
+            "Preferred Course",
+            "Preferred City",
+            "Study Abroad",
+            "Budget"
+        ],
+        "schema_path": "Education_Counselling_Agent.json",
+        "agent_type": "education",
+        "createdAt": "2026-09-17T23:53:00.000000"
+    },
+    {
         "name": "Integration Test Agent",
         "voice": "ElevenLabs Priya",
         "language": "Hindi + English",

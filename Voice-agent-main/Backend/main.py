@@ -7372,18 +7372,23 @@ async def websocket_voice_live(websocket: WebSocket):
     # Accept BEFORE touching anything else
     await websocket.accept()
 
+    from llm.language_utils import normalize_language_code
     agent_id    = websocket.query_params.get("agentId", "default")
     client_id   = websocket.query_params.get("clientId")
     lead_name   = websocket.query_params.get("leadName", "Prashant")
+    raw_lang    = websocket.query_params.get("language") or "en"
+    requested_lang = normalize_language_code(raw_lang)
     schema_path = _resolve_schema(agent_id)
     _audit_ws_connection(websocket, "/api/voice-live", client_id)
-    logger.info("Live Voice: Connected — agent=%s schema=%s", agent_id, schema_path)
+    logger.info("Live Voice: Connected — agent=%s schema=%s raw_lang=%s session_lang=%s", agent_id, schema_path, raw_lang, requested_lang)
 
     turn_state = VoiceTurnState()
+    turn_state.session_language = requested_lang
     source = VoiceLiveSource(recording_turn_state=turn_state)
     vad    = VADProcessor(turn_state=turn_state)
     stt    = RealEstateSTTProcessor(turn_state=turn_state, agent_id=agent_id, vad_enabled=False)
     llm    = RealEstateLLMProcessor(turn_state=turn_state)
+    llm.current_language = requested_lang
     llm.state_manager = StateManager(schema_path)
     llm.state_manager.reset_state()                          # Fix: prevent stale session carry-over
     llm.state_manager.conversation_data["name"] = lead_name
@@ -7406,11 +7411,18 @@ async def websocket_voice_live(websocket: WebSocket):
                     text = msg.get("text")
                     if text:
                         try:
-                            # Handle dynamic sample rate handshake
+                            # Handle dynamic sample rate handshake & explicit language change
                             payload = json.loads(text)
                             message_type = payload.get("type")
                             if message_type == "mic_ready":
                                 source.set_sample_rate(payload.get("sampleRate", 16000))
+                            elif message_type == "language_change":
+                                new_lang = payload.get("language")
+                                if new_lang:
+                                    norm_lang = normalize_language_code(new_lang)
+                                    logger.info("[Live Voice WS] Explicit language change: %s -> %s", new_lang, norm_lang)
+                                    turn_state.session_language = norm_lang
+                                    llm.current_language = norm_lang
                             elif message_type == "ping":
                                 try:
                                     await websocket.send_text(json.dumps({"type": "pong"}))
@@ -7559,11 +7571,16 @@ async def websocket_voice_demo(websocket: WebSocket):
     recorder = TimelineSessionRecorder(sample_rate=24000)
     if _PIPECAT_AVAILABLE:
         try:
+            from llm.language_utils import normalize_language_code
+            raw_lang = websocket.query_params.get("language") or "en"
+            requested_lang = normalize_language_code(raw_lang)
             turn_state = VoiceTurnState()
+            turn_state.session_language = requested_lang
             source = VoiceLiveSource(recorder=recorder, recording_turn_state=turn_state)
             vad    = VADProcessor(turn_state=turn_state)
             stt    = RealEstateSTTProcessor(turn_state=turn_state, agent_id=agent_id, vad_enabled=False)
             llm    = RealEstateLLMProcessor(turn_state=turn_state)
+            llm.current_language = requested_lang
             llm.state_manager = StateManager(schema_path)
             llm.state_manager.reset_state()
             llm.state_manager.conversation_data["name"] = lead_name
@@ -7572,7 +7589,7 @@ async def websocket_voice_demo(websocket: WebSocket):
             llm_ref = llm  # capture ref BEFORE runner_task starts
             tts    = RealEstateTTSProcessor(turn_state=turn_state, agent_id=agent_id)
             sink   = VoiceLiveSink(websocket, on_transcript=on_transcript, recorder=recorder)
-            logger.info("Voice Demo: Pipeline components created")
+            logger.info("Voice Demo: Pipeline components created with raw_lang=%s session_lang=%s", raw_lang, requested_lang)
 
             pipeline    = Pipeline([source, vad, stt, llm, tts, sink])
             runner      = PipelineRunner()
@@ -7652,6 +7669,13 @@ async def websocket_voice_demo(websocket: WebSocket):
                             message_type = payload.get("type")
                             if message_type == "mic_ready" and source is not None:
                                 source.set_sample_rate(payload.get("sampleRate", 16000))
+                            elif message_type == "language_change":
+                                new_lang = payload.get("language")
+                                if new_lang:
+                                    logger.info("[Voice Demo WS] Language change event: %s", new_lang)
+                                    turn_state.session_language = new_lang
+                                    if llm_ref:
+                                        llm_ref.current_language = new_lang
                             elif message_type == "ping":
                                 try:
                                     await websocket.send_text(json.dumps({"type": "pong"}))
@@ -7784,10 +7808,21 @@ def _resolve_schema(agent_id: str) -> str:
     Resolve the agent schema path from agent_id.
     Always reads from disk — never cached — so fine-tuning changes apply immediately.
     """
-    if agent_id in ("real-estate-demo", "default"):
-        agent_id = "real_estate_sales"
-    
-    # Resolve friendly name from fallback JSON file to match split directory layouts
+    clean_id = (agent_id or "").strip().lower()
+
+    if clean_id in ("education_counselling", "education", "aarohi"):
+        edu_file = os.path.join(os.path.dirname(__file__), "Education_Counselling_Agent.json")
+        if os.path.exists(edu_file):
+            return edu_file
+        edu_db_file = os.path.join(AGENTS_DIR, "education_counselling.json")
+        if os.path.exists(edu_db_file):
+            return edu_db_file
+
+    if not clean_id or clean_id in ("real-estate-demo", "default", "real_estate_sales", "real_estate"):
+        re_file = os.path.join(os.path.dirname(__file__), "Updated_Real_Estate_Agent.json")
+        if os.path.exists(re_file):
+            return re_file
+
     aliases = [agent_id]
     fallback_file = os.path.join(AGENTS_DIR, f"{agent_id}.json")
     if os.path.exists(fallback_file):
@@ -7804,7 +7839,7 @@ def _resolve_schema(agent_id: str) -> str:
 
     if agent_id == "real_estate_sales":
         aliases.append("real_estate")
-        
+
     for alias in aliases:
         dir_path = os.path.join(AGENTS_DIR, alias)
         if os.path.isdir(dir_path):

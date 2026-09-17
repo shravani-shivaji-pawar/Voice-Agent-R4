@@ -21,26 +21,46 @@ try:
 except ImportError:
     _HAS_OPENAI = False
 
-# Dynamic LLM Client Selection (OpenAI / Groq)
+# Dynamic LLM Client Selection (OpenAI / Groq / Llama)
 def get_llm_client():
     provider = os.getenv("LLM_PROVIDER", "").strip().lower()
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
     groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    llama_key = os.getenv("LLAMA_API_KEY", "").strip()
+    llama_url = os.getenv("LLAMA_BASE_URL", "").strip() or "https://openrouter.ai/api/v1"
 
-    if (provider == "openai" or (openai_key and not groq_key)) and _HAS_OPENAI:
+    if provider == "llama" and llama_key and _HAS_OPENAI:
+        return AsyncOpenAI(api_key=llama_key, base_url=llama_url)
+    if (provider == "openai" or (openai_key and not groq_key and provider != "groq")) and _HAS_OPENAI:
         return AsyncOpenAI(api_key=openai_key)
     return AsyncGroq(api_key=groq_key)
 
 _client = get_llm_client()
 
 class ExtractedEntities(BaseModel):
-    intent_value: Optional[str] = Field(None, description="buy, rent, sell, or invest")
-    budget_range: Optional[str] = Field(None, description="budget range e.g. 50-70 Lakhs, 1.2 Crore")
-    preferred_bhk: Optional[str] = Field(None, description="bhk preference e.g. 2 BHK, 3 BHK, 4 BHK")
-    location: Optional[str] = Field(None, description="city or area user is interested in e.g. Jaipur, Jodhpur, Madurai")
-    timeline_weeks: Optional[int] = Field(None, description="timeline to purchase in weeks")
-    contact_validated: Optional[bool] = Field(None, description="whether contact details are validated")
-    user_name: Optional[str] = Field(None, description="user's first name if they introduce themselves, e.g. 'Roy'")
+    # Real Estate fields
+    location: Optional[str] = Field(None, description="location or city e.g. Wakad, Baner, Hinjewadi, Pune")
+    budget: Optional[str] = Field(None, description="property or education budget e.g. 50 lakhs, 2 crores, 2 to 3 lakhs")
+    bhk: Optional[str] = Field(None, description="BHK configuration e.g. 1 BHK, 2 BHK, 3 BHK")
+    property_type: Optional[str] = Field(None, description="property type e.g. apartment, villa, plot, commercial")
+    intent_value: Optional[str] = Field(None, description="purpose e.g. buy, rent, invest, sell")
+    timeline: Optional[str] = Field(None, description="timeline e.g. immediate, weekend, 2 months")
+    
+    # Education fields
+    current_qualification: Optional[str] = Field(None, description="user's current education level e.g. BCA, 12th science, B.Tech, B.Com")
+    preferred_course: Optional[str] = Field(None, description="course user wants to pursue e.g. MCA, MBA, B.Tech, M.Tech, MBBS")
+    preferred_specialization: Optional[str] = Field(None, description="specialization e.g. AI, Computer Science, Data Science, Finance")
+    preferred_city: Optional[str] = Field(None, description="preferred study city e.g. Pune, Jaipur, Delhi, Mumbai, Bangalore")
+    preferred_country: Optional[str] = Field(None, description="preferred study country e.g. USA, UK, Canada, Germany, Australia")
+    study_abroad: Optional[bool] = Field(None, description="whether student wants to study abroad")
+    percentage: Optional[str] = Field(None, description="academic percentage or GPA e.g. 78%, 85%")
+    budget_range: Optional[str] = Field(None, description="budget range e.g. 2 to 3 lakhs, 10 lakhs")
+    entrance_exam: Optional[str] = Field(None, description="entrance exam taken or preparing e.g. MAH MCA CET, JEE Main, CAT, IELTS")
+    career_goal: Optional[str] = Field(None, description="career goal or interests e.g. software development, programming, AI")
+    
+    # Common fields
+    user_name: Optional[str] = Field(None, description="user's first name if provided")
+    phone: Optional[str] = Field(None, description="phone number if provided")
 
 class IntentAnalysis(BaseModel):
     intent: str = Field(
@@ -50,37 +70,47 @@ class IntentAnalysis(BaseModel):
     confidence_score: float = Field(1.0, description="Confidence score between 0.0 and 1.0")
     entities: ExtractedEntities
 
-INTENT_EXTRACTION_PROMPT = """You are an expert real estate intent classifier and slots extractor.
-Analyze the user's latest message and the conversation history. Map it to one of the following node intents:
-- GREETING: User saying hello, asking who is calling, or general greeting.
-- DISCOVERY: User sharing general interests, or asking what properties are available.
-- QUALIFICATION: User providing specific details about their buying criteria (BHK, budget, timeline).
-- LIVE_SEARCH: User asking specific questions about 'Suncity Apartments' (amenities, location, price, rules, availability) that require live website validation.
-- OBJECTION_HANDLING: User raising concerns (too expensive, wrong location, not interested right now).
-- SCHEDULING: User agreeing to a callback, site visit, or scheduling a call.
+INTENT_EXTRACTION_PROMPT = """You are an expert education intent classifier and student profile slot extractor.
+Analyze the user's latest message and conversation history. Map it to one of the following node intents:
+- GREETING: User saying hello, asking who is speaking, or general initial greeting.
+- DISCOVERY: User sharing general career interests, or asking what courses or options are available.
+- QUALIFICATION: User providing specific details about their education, degree, percentage, city, or budget.
+- LIVE_SEARCH: User asking specific questions about courses, exams, fees, scholarships, or college guidance.
+- OBJECTION_HANDLING: User raising concerns (too expensive, wrong city, not sure what to study).
+- SCHEDULING: User requesting to speak with an education counsellor or schedule a callback.
 - CLOSING: User winding down, saying goodbye, or finalizing the call.
 
-Also extract the following entities if present in the message:
-- intent_value: "buy", "rent", "sell", or "invest"
-- budget_range: e.g. "60-80 Lakhs" or "1.5 Cr"
-- preferred_bhk: e.g. "2 BHK" or "3 BHK"
-- location: extract the city or area the user wants (e.g., Jaipur, Jodhpur, Madurai)
-- timeline_weeks: extract approximate weeks to buy (e.g. "next month" -> 4, "immediate" -> 0, "6 months" -> 24)
-- contact_validated: set to true if user confirms phone/WhatsApp or says "yes, send it there"
-- user_name: extract the user's first name ONLY if they explicitly say their name (e.g. "my name is Roy" -> "Roy", "I'm Matthew" -> "Matthew"). Leave null if they don't introduce themselves.
+Also extract the following student profile entities if present:
+- current_qualification: e.g. "BCA", "12th science", "B.Tech"
+- preferred_course: e.g. "MCA", "MBA", "M.Tech", "B.Tech"
+- preferred_specialization: e.g. "AI", "Computer Science", "Data Science"
+- preferred_city: e.g. "Pune", "Jaipur", "Bangalore", "Delhi"
+- preferred_country: e.g. "USA", "UK", "Canada", "Germany", "Australia"
+- study_abroad: set to true if user mentions studying abroad or foreign countries
+- percentage: e.g. "78%", "85%"
+- budget_range: e.g. "2 to 3 lakhs", "5 lakhs"
+- entrance_exam: e.g. "MAH MCA CET", "JEE Main", "IELTS"
+- career_goal: e.g. "software development", "AI engineer"
+- user_name: extract first name if explicitly given
+- phone: extract phone number if provided
 
 Respond ONLY with a valid JSON object matching this schema:
 {
   "intent": "GREETING | DISCOVERY | QUALIFICATION | LIVE_SEARCH | OBJECTION_HANDLING | SCHEDULING | CLOSING",
   "confidence_score": 0.0 to 1.0,
   "entities": {
-    "intent_value": "buy | rent | sell | invest | null",
+    "current_qualification": "string | null",
+    "preferred_course": "string | null",
+    "preferred_specialization": "string | null",
+    "preferred_city": "string | null",
+    "preferred_country": "string | null",
+    "study_abroad": boolean | null,
+    "percentage": "string | null",
     "budget_range": "string | null",
-    "preferred_bhk": "string | null",
-    "location": "string | null",
-    "timeline_weeks": integer | null,
-    "contact_validated": boolean | null,
-    "user_name": "string | null"
+    "entrance_exam": "string | null",
+    "career_goal": "string | null",
+    "user_name": "string | null",
+    "phone": "string | null"
   }
 }
 Do not return markdown, ticks, or text explanations.
@@ -88,8 +118,45 @@ Do not return markdown, ticks, or text explanations.
 
 async def analyze_user_intent(user_input: str, history: List[Dict[str, str]]) -> IntentAnalysis:
     """
-    Queries Groq using llama-3.1-8b-instant to classify intent and extract slots.
+    Queries Groq using llama-3.1-8b-instant to classify intent and extract slots,
+    with 0ms local bypass for deterministic inputs.
     """
+    try:
+        from llm.state_manager import is_hard_out
+        if is_hard_out(user_input):
+            return IntentAnalysis(
+                intent="CLOSING",
+                confidence_score=1.0,
+                entities=ExtractedEntities()
+            )
+            
+        local_info = _classify_local_intent(user_input)
+        if local_info and local_info.get("intent") and local_info.get("intent") not in {"unclear", "user_question"}:
+            loc_intent = local_info.get("intent")
+            ents = local_info.get("entities", {})
+            target_intent = "QUALIFICATION" if loc_intent in {"provide_location", "provide_budget", "provide_info", "provide_intent", "confirm"} else "DISCOVERY"
+            
+            return IntentAnalysis(
+                intent=target_intent,
+                confidence_score=0.95,
+                entities=ExtractedEntities(
+                    current_qualification=ents.get("current_qualification"),
+                    preferred_course=ents.get("preferred_course"),
+                    preferred_specialization=ents.get("preferred_specialization"),
+                    preferred_city=ents.get("preferred_city") or ents.get("location"),
+                    preferred_country=ents.get("preferred_country"),
+                    study_abroad=ents.get("study_abroad"),
+                    percentage=ents.get("percentage"),
+                    budget_range=ents.get("budget"),
+                    entrance_exam=ents.get("entrance_exam"),
+                    career_goal=ents.get("career_goal"),
+                    user_name=ents.get("user_name"),
+                    phone=ents.get("phone"),
+                )
+            )
+    except Exception:
+        pass
+
     messages = [
         {"role": "system", "content": INTENT_EXTRACTION_PROMPT}
     ]
@@ -124,19 +191,18 @@ class CombinedResponseAnalysis(BaseModel):
     intent_analysis: IntentAnalysis
     spoken_reply_text: str
 
-COMBINED_EXTRACTION_PROMPT = """You are Priya, a senior real estate advisor at Suncity Apartments on a live phone call.
+COMBINED_EXTRACTION_PROMPT = """You are Aarohi, an AI Education Counsellor on a live phone call.
 
 Perform two tasks in a single turn:
-1. Extract the user's intent and entities based on their latest message.
+1. Extract the student's intent and profile entities based on their latest message.
 2. Generate your spoken reply text naturally in the SAME language as the user (English, Hindi, or Hinglish).
 
 Use the same INTENT classes: GREETING, DISCOVERY, QUALIFICATION, LIVE_SEARCH, OBJECTION_HANDLING, SCHEDULING, CLOSING.
-Extract the same entities: intent_value, budget_range, preferred_bhk, location, timeline_weeks, contact_validated, user_name.
+Extract entities: current_qualification, preferred_course, preferred_specialization, preferred_city, preferred_country, study_abroad, percentage, budget_range, entrance_exam, career_goal, user_name, phone.
 
 Spoken Response Rules:
 - Match the user's language: If the user speaks Hindi or Hinglish, respond in natural spoken Hindi/Hinglish.
-- Suncity Apartments ONLY operates in Jaipur, Jodhpur, and Madurai. If asked for Pune, Delhi, Mumbai, etc., state politely that we only operate in Jaipur, Jodhpur, and Madurai.
-- If asked about CEO or corporate founders, state: "Suncity Apartments is a developer operating in Jaipur, Jodhpur, and Madurai. For official corporate details, check our website." NEVER invent fake names.
+- NEVER invent factual details about specific colleges, cutoffs, rankings, placement stats, scholarships, or exact fees. State clearly that details vary by university.
 - Keep responses to 15-25 words. Plain spoken sentences. NEVER use bullet points, tables, lists, or markdown formatting.
 
 Respond ONLY with a valid JSON object matching this schema:
@@ -145,13 +211,18 @@ Respond ONLY with a valid JSON object matching this schema:
     "intent": "GREETING | DISCOVERY | QUALIFICATION | LIVE_SEARCH | OBJECTION_HANDLING | SCHEDULING | CLOSING",
     "confidence_score": 0.0 to 1.0,
     "entities": {
-      "intent_value": "buy | rent | sell | invest | null",
+      "current_qualification": "string | null",
+      "preferred_course": "string | null",
+      "preferred_specialization": "string | null",
+      "preferred_city": "string | null",
+      "preferred_country": "string | null",
+      "study_abroad": boolean | null,
+      "percentage": "string | null",
       "budget_range": "string | null",
-      "preferred_bhk": "string | null",
-      "location": "string | null",
-      "timeline_weeks": integer | null,
-      "contact_validated": boolean | null,
-      "user_name": "string | null"
+      "entrance_exam": "string | null",
+      "career_goal": "string | null",
+      "user_name": "string | null",
+      "phone": "string | null"
     }
   },
   "spoken_reply_text": "Your natural spoken response here"
@@ -194,24 +265,28 @@ async def generate_combined_intent_and_response(user_input: str, history: List[D
 
 _NEHA_PERSONA = (
     "Role & Core Identity:\n"
-    "You are Priya, a warm, polite, and professional real estate advisor at Suncity Apartments. "
-    "You speak naturally like a helpful human advisor over the phone — friendly, grounded, and concise.\n\n"
+    "You are Priya (or Neha), a polite, professional, and persuasive Senior Real Estate Sales Advisor at Suncity Apartments. "
+    "You speak naturally over the phone like a real human sales executive — friendly, helpful, concise, and focused on property discovery and scheduling a site visit.\n\n"
 
-    "CRITICAL COMPANY FACTS (STRICT NO-HALLUCINATION RULES):\n"
-    "1. Company Name: Suncity Apartments.\n"
-    "2. Operating Cities: ONLY Jaipur, Jodhpur, and Madurai. We DO NOT have any properties in Pune, Mumbai, Delhi, Bangalore, or any other city.\n"
-    "3. Out-of-bounds Cities: If the user asks for Pune, Mumbai, Delhi, etc., immediately state politely: 'Suncity Apartments only operates in Jaipur, Jodhpur, and Madurai. Would you be interested in exploring options in one of these cities?'\n"
-    "4. Corporate / CEO Questions: If asked about the company's CEO, founder, or corporate details, answer truthfully: 'Suncity Apartments is a developer operating in Jaipur, Jodhpur, and Madurai. For official corporate details, you can visit our website or sales office.' NEVER invent fake names.\n"
-    "5. Property Inventory:\n"
-    "   - Jaipur: 1BHK (28L - 35L), 2BHK (48L - 55L), 3BHK (95L - 1.2Cr)\n"
-    "   - Jodhpur: 1BHK (25L - 30L), 2BHK (42L - 50L), 3BHK (1.1Cr - 1.5Cr)\n"
-    "   - Madurai: 1BHK (26L - 32L), 2BHK (45L - 52L), 3BHK (85L - 1.1Cr)\n\n"
+    "CRITICAL REAL ESTATE RULES:\n"
+    "1. Name: Priya (or Neha), Real Estate Sales Executive at Suncity Apartments.\n"
+    "2. Scope: Real Estate property search (1 BHK, 2 BHK, 3 BHK, apartments, villas, location, budget, site visit scheduling).\n"
+    "3. CONVERSATIONAL STYLE: Keep responses short (1-2 spoken sentences, max 25 words). Ask at most ONE question per turn. No markdown, bullet points, or tables.\n"
+    "4. Match the user's language: Respond in clear, natural English, Hindi, or Hinglish as spoken by the user.\n"
+)
 
-    "CONVERSATIONAL STYLE & RULES:\n"
-    "1. Keep responses short, natural, and spoken (15 to 25 words maximum per turn).\n"
-    "2. Ask at most ONE question per turn. Never overload the user with multiple questions.\n"
-    "3. NEVER use tables, bullet points, asterisks (*), markdown formatting, or ALL-CAPS shouting.\n"
-    "4. Match the user's language: If the user speaks Hindi or Hinglish, reply in clear, natural Hindi or Hinglish.\n"
+_AAROHI_PERSONA = (
+    "Role & Core Identity:\n"
+    "You are Aarohi, a warm, polite, supportive, and professional AI Education Counsellor. "
+    "You speak naturally like a helpful human counsellor over the phone — friendly, patient, grounded, and concise (1-2 short spoken sentences).\n\n"
+
+    "CRITICAL COUNSELLING & NO-HALLUCINATION RULES:\n"
+    "1. Name: Aarohi, AI Education Counsellor.\n"
+    "2. Scope: Courses (BCA, MCA, B.Tech, MBA, etc.), Colleges, Entrance Exams, Admission Process, Fees, Scholarships, Education Loans, and Study Abroad.\n"
+    "3. STRICT NO-HALLUCINATION: NEVER invent or fabricate specific college rankings, cutoffs, exact fees, placement packages, admission deadlines, or scholarship amounts. State clearly that exact criteria vary by university.\n"
+    "4. NO REPETITION: Verified student state is authoritative. Never re-ask for course, city, qualification, or budget if already captured in state.\n"
+    "5. CONVERSATIONAL STYLE: Keep responses short (15-25 words max per turn). Ask at most ONE question per turn. No bullet points, markdown, or tables.\n"
+    "6. Match the user's language: Respond in clear, natural English, Hindi, or Hinglish as spoken by the user.\n"
 )
 
 
@@ -242,24 +317,306 @@ def _sanitize_llm_text(text: str | None) -> str:
     return text.strip()
 
 
+async def _call_groq_with_retry(
+    messages: list[dict[str, str]],
+    model_name: str,
+    max_tokens: int = 400,
+    temperature: float = 0.45,
+    max_attempts: int = 2,
+) -> str:
+    """Bounded retry helper for Groq API calls to handle 429 Rate Limits & Timeouts."""
+    for attempt in range(1, max_attempts + 1):
+        try:
+            t0 = time.time()
+            completion = await _client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            latency = time.time() - t0
+            logger.info("Groq LLM call succeeded in %.3fs (attempt %d/%d)", latency, attempt, max_attempts)
+            return completion.choices[0].message.content or ""
+        except RateLimitError as rle:
+            wait = 1.0 * attempt
+            logger.warning("Groq 429 rate limit hit (attempt %d/%d) — retrying in %.1fs", attempt, max_attempts, wait)
+            if attempt < max_attempts:
+                await asyncio.sleep(wait)
+        except APITimeoutError:
+            logger.warning("Groq API timeout (attempt %d/%d)", attempt, max_attempts)
+            if attempt < max_attempts:
+                await asyncio.sleep(0.5)
+        except APIError as exc:
+            logger.error("Groq API error (attempt %d/%d): %s", attempt, max_attempts, exc)
+            if attempt < max_attempts:
+                await asyncio.sleep(0.5)
+        except Exception as exc:
+            logger.error("Groq call exception (attempt %d/%d): %s", attempt, max_attempts, exc)
+            break
+    return ""
+
+
+def _get_contextual_fallback(
+    language: str,
+    prompt: str = "",
+    is_greeting: bool = False,
+    history: Optional[List[Dict[str, str]]] = None,
+    slots: Optional[Dict[str, Any]] = None,
+    domain: str = "real_estate",
+) -> str:
+    """Generate dynamic, context-aware fallback response based on missing slots and language, avoiding repetition."""
+    from llm.language_utils import normalize_language_code
+    lang = normalize_language_code(language)
+
+    last_assistant_msg = ""
+    if history:
+        for msg in reversed(history):
+            if msg.get("role") in ("assistant", "agent", "bot"):
+                last_assistant_msg = (msg.get("content") or "").strip()
+                break
+
+    def _select_candidate(candidates: list[str]) -> str:
+        if not candidates:
+            return ""
+        for cand in candidates:
+            if cand.strip() != last_assistant_msg:
+                return cand
+        return candidates[0]
+
+    if domain == "education":
+        if is_greeting:
+            if lang in ("hi", "hinglish"):
+                return _select_candidate([
+                    "नमस्ते! मैं आरोही बोल रही हूँ, आपकी एजुकेशन काउंसलर। आप अभी क्या पढ़ाई कर रहे हैं या आगे क्या पढ़ना चाहते हैं?",
+                    "Hi! Main Aarohi baat kar rahi hoon, aapki education counsellor. Aap aage kya padhna chahte hain?"
+                ])
+            return _select_candidate([
+                "Hi, I'm Aarohi, your education counsellor. What are you currently studying or planning to study?",
+                "Hello, I'm Aarohi. I can help you with course options, colleges, or study abroad plans. What are you preparing for?"
+            ])
+
+        s = slots or {}
+        has_course = bool(s.get("preferred_course") or s.get("current_qualification"))
+        has_city = bool(s.get("preferred_city") or s.get("preferred_country"))
+
+        if not has_course:
+            if lang in ("hi", "hinglish"):
+                return _select_candidate([
+                    "समझ गई! आप कौन सा कोर्स या डिग्री प्रेफर कर रहे हैं?",
+                    "जी, आप आगे BCA, MCA, B.Tech या MBA में से क्या प्लान कर रहे हैं?"
+                ])
+            return _select_candidate([
+                "Understood! Which degree or course are you planning to pursue?",
+                "Got it! Are you looking for undergraduate or postgraduate courses?"
+            ])
+
+        if not has_city:
+            if lang in ("hi", "hinglish"):
+                return _select_candidate([
+                    "जी, आप किस शहर या देश में स्टडी करना चाहते हैं?",
+                    "समझ गई! आपकी प्रेफर्ड लोकेशन पुणे, जयपुर, बैंगलोर या स्टडी एब्रॉड है?"
+                ])
+            return _select_candidate([
+                "Got it! Which city or country do you prefer for your education?",
+                "Understood! Are you looking for colleges in India or studying abroad?"
+            ])
+
+        if lang in ("hi", "hinglish"):
+            return _select_candidate([
+                "समझ गई! क्या आप विस्तृत काउंसलिंग के लिए हमारे एक्सपर्ट काउंसलर से बात करना चाहेंगे?",
+                "जी धन्यवाद! हमारी टीम आपको जल्द ही कोर्स और एडमिशन डिटेल्स भेजेगी।"
+            ])
+        return _select_candidate([
+            "Understood! Would you like me to connect you with an expert education counsellor?",
+            "Got it! Our counselling team will guide you on admission details shortly."
+        ])
+
+    if is_greeting:
+        if lang in ("hi", "hinglish"):
+            return _select_candidate([
+                "नमस्ते, मैं सनसिटी अपार्टमेंट्स से प्रिया बोल रही हूँ। क्या आप प्रॉपर्टी खरीदना या किराए पर लेना चाहते हैं?",
+                "नमस्ते, मैं सनसिटी अपार्टमेंट्स से प्रिया। मैं आपकी प्रॉपर्टी खोज में मदद करने के लिए कॉल कर रही हूँ।"
+            ])
+        elif lang == "mr":
+            return _select_candidate([
+                "नमस्कार, मी सनसिटी अपार्टमेंट्सकडून प्रिया बोलत आहे. तुम्ही प्रॉपर्टी खरेदी करू इच्छिता की भाड्याने घेऊ इच्छिता?",
+                "नमस्कार! मी सनसिटी अपार्टमेंट्सकडून प्रिया. मी तुमच्या प्रॉपर्टी शोधत मदत करण्यासाठी कॉल केला आहे."
+            ])
+        return _select_candidate([
+            "Hi, this is Priya from Suncity Apartments. Are you looking to buy or rent a property?",
+            "Hello! This is Priya from Suncity Apartments. How can I assist with your property search today?"
+        ])
+
+    if domain == "education":
+        if is_greeting:
+            if lang in ("hi", "hinglish"):
+                return "नमस्ते! मैं आरोही बोल रही हूँ, आपकी एजुकेशन काउंसलर। आप अभी क्या पढ़ाई कर रहे हैं या आगे क्या पढ़ना चाहते हैं?"
+            return "Hi, I'm Aarohi, your education counsellor. What are you currently studying or planning to study?"
+        
+        has_course = bool(s.get("preferred_course") or s.get("current_qualification"))
+        has_location = bool(s.get("preferred_city") or s.get("preferred_country") or s.get("study_abroad") is not None)
+        has_budget = bool(s.get("budget"))
+
+        if not has_course:
+            if lang in ("hi", "hinglish"):
+                return "जी! आप अभी क्या पढ़ाई कर रहे हैं या कौन सा कोर्स करने की सोच रहे हैं?"
+            return "Got it! Which course or degree are you looking to pursue?"
+        if not has_location:
+            if lang in ("hi", "hinglish"):
+                return "समझ गई! आप किस शहर में या स्टडी एब्रॉड में पढ़ना चाहते हैं?"
+            return "Understood! Which city or country are you considering for your studies?"
+        if not has_budget:
+            if lang in ("hi", "hinglish"):
+                return "जी, आपका कोर्स फीस के लिए बजट क्या रहेगा?"
+            return "Understood! What budget range do you have in mind for your course?"
+
+        if lang in ("hi", "hinglish"):
+            return "बहुत बढ़िया! क्या आप हमारे एक्सपर्ट काउंसलर से सेशन कनेक्ट करना चाहेंगे?"
+        return "Great! Would you like me to connect you with an expert counsellor for detailed guidance?"
+
+    s = slots or {}
+    has_location = bool(s.get("location"))
+    has_bhk = bool(s.get("bhk") or s.get("preferred_bhk"))
+    has_budget = bool(s.get("budget") or s.get("budget_range"))
+
+    p_lower = (prompt or "").lower()
+    if not has_location and ("location:" in p_lower or "location already" in p_lower):
+        has_location = True
+    if not has_bhk and ("bhk preference:" in p_lower or "bhk:" in p_lower):
+        has_bhk = True
+    if not has_budget and ("budget:" in p_lower or "budget range:" in p_lower):
+        has_budget = True
+    logger.info("[FALLBACK DEBUG] slots=%s, has_loc=%s, has_bhk=%s, has_budget=%s", s, has_location, has_bhk, has_budget)
+
+    if not has_location:
+        if lang in ("hi", "hinglish"):
+            return _select_candidate([
+                "समझ गई! आप किस शहर या क्षेत्र में प्रॉपर्टी देख रहे हैं?",
+                "जी, मुझे बताएँ कि आपकी पसंद का कौन सा शहर या एरिया है?"
+            ])
+        elif lang == "mr":
+            return _select_candidate([
+                "समजले! तुम्ही कोणत्या शहरात किंवा भागात प्रॉपर्टी पाहत आहात?",
+                "समजले! तुमची पसंतीचे शहर किंवा भाग कोणता आहे?"
+            ])
+        return _select_candidate([
+            "Understood! Which city or area are you considering?",
+            "Got it! What location do you have in mind?"
+        ])
+
+    if not has_bhk:
+        if lang in ("hi", "hinglish"):
+            return _select_candidate([
+                "समझ गई! आप कितने BHK का फ्लैट देखना चाहते हैं?",
+                "जी, आपकी क्या preference है — 2 BHK या 3 BHK?"
+            ])
+        elif lang == "mr":
+            return _select_candidate([
+                "समजले! तुम्हाला किती BHK चा फ्लॅट हवा आहे?",
+                "समजले! तुमची पसंती 2 BHK आहे की 3 BHK?"
+            ])
+        return _select_candidate([
+            "Got it! What apartment size (like 2 BHK or 3 BHK) are you looking for?",
+            "Understood! Are you looking for a 2 BHK or 3 BHK flat?"
+        ])
+
+    if not has_budget:
+        if lang in ("hi", "hinglish"):
+            return _select_candidate([
+                "समझ गई! आपका बजट लगभग कितना रहेगा?",
+                "जी, आपके दिमाग में क्या बजट रेंज है?"
+            ])
+        elif lang == "mr":
+            return _select_candidate([
+                "समजले! तुमचे बजेट अंदाजे किती आहे?",
+                "समजले! तुमची अपेक्षित किंमत मर्यादा काय आहे?"
+            ])
+        return _select_candidate([
+            "Got it! What budget range do you have in mind?",
+            "Understood! Could you share your expected price range?"
+        ])
+
+    if lang in ("hi", "hinglish"):
+        return _select_candidate([
+            "समझ गई! आपकी आवश्यकताएँ नोट कर ली हैं। क्या आप इस वीकेंड साइट विजिट करना चाहेंगे?",
+            "जी, धन्यवाद! हमारी टीम आपको जल्द ही प्रॉपर्टी की जानकारी भेजेगी।"
+        ])
+    elif lang == "mr":
+        return _select_candidate([
+            "समजले! सर्व माहिती नोंदवली आहे. तुम्ही या विकेंडला साईट व्हिजिट करणार का?",
+            "समजले! आमची टीम तुम्हाला लवकरच अधिक माहिती पाठवेल."
+        ])
+    return _select_candidate([
+        "Understood! I've noted down your preferences. Would you be open for a site visit this weekend?",
+        "Got it! Our team will send over the property options shortly."
+    ])
+
+
 async def generate_voice_response(
     prompt: str,
     history: List[Dict[str, str]],
     context: str = "",
     language: str = "en",
     is_greeting: bool = False,
+    slots: Optional[Dict[str, Any]] = None,
+    domain: str = "real_estate",
 ) -> str:
     """
-    Generates a speech-optimized, human-like response from Priya using Llama 3 / GPT-OSS.
-    Language-aware: mirrors the user's language in every reply.
+    Generates a speech-optimized, human-like response using Llama 3 / GPT-OSS.
+    Language-aware: strict session language lock with bounded Groq retry.
     """
-    from llm.language_utils import get_language_instruction
-    lang_directive = get_language_instruction(language)
+    from llm.language_utils import get_language_instruction, normalize_language_code
+    session_lang = normalize_language_code(language)
+    lang_directive = get_language_instruction(session_lang)
+
+    active_persona = _AAROHI_PERSONA if domain == "education" else _NEHA_PERSONA
+
+    verified_state_str = ""
+    if slots:
+        verified_items = []
+        if domain == "education":
+            qual = slots.get("current_qualification")
+            if qual: verified_items.append(f"Current Qualification: {qual}")
+            course = slots.get("preferred_course")
+            if course: verified_items.append(f"Preferred Course: {course}")
+            city = slots.get("preferred_city")
+            if city: verified_items.append(f"Preferred City: {city}")
+            country = slots.get("preferred_country")
+            if country: verified_items.append(f"Preferred Country: {country}")
+            pct = slots.get("percentage")
+            if pct: verified_items.append(f"Percentage/Score: {pct}")
+            bdg = slots.get("budget") or slots.get("budget_range")
+            if bdg: verified_items.append(f"Budget: {bdg}")
+        else:
+            loc = slots.get("location")
+            if loc: verified_items.append(f"Location: {loc}")
+            bhk = slots.get("bhk") or slots.get("preferred_bhk")
+            if bhk: verified_items.append(f"Property/BHK: {bhk}")
+            bdg = slots.get("budget") or slots.get("budget_range")
+            if bdg: verified_items.append(f"Budget: {bdg}")
+            intent_val = slots.get("intent") or slots.get("intent_value")
+            if intent_val: verified_items.append(f"Intent: {intent_val}")
+            tml = slots.get("timeline") or slots.get("timeline_weeks")
+            if tml: verified_items.append(f"Timeline: {tml}")
+
+        if verified_items:
+            verified_state_str = (
+                "\n\nCURRENT VERIFIED STATE (FACTUAL TRUTH — DO NOT OVERWRITE OR RE-ASK):\n"
+                + "\n".join(f"- {item}" for item in verified_items)
+                + "\nSTRICT INSTRUCTIONS ON VERIFIED STATE:\n"
+                "1. Treat all fields in Verified State as absolute fact.\n"
+                "2. NEVER ask the user for a field that is already present in Verified State.\n"
+                "3. Ask ONLY for the next missing required slot, or proceed to next steps if all criteria are filled.\n"
+            )
 
     system_prompt = (
-        f"{_NEHA_PERSONA}\n\n"
-        f"LANGUAGE DIRECTIVE: {lang_directive}\n"
-        f"Always detect and match the user's language (English, Hindi, or Hinglish) and reply in that EXACT SAME language.\n\n"
+        f"{active_persona}\n\n"
+        f"HARD SESSION LANGUAGE LOCK DIRECTIVE:\n"
+        f"{lang_directive}\n"
+        f"The active session language is '{session_lang}'. You MUST respond ONLY in this active session language.\n"
+        f"Do NOT automatically switch language based on the user's detected language, words, or input.\n"
+        f"Even if the user speaks English, Hindi, or Hinglish, your reply MUST remain strictly in '{session_lang}'.\n"
+        f"{verified_state_str}\n\n"
         f"{prompt}"
     )
     if context:
@@ -276,23 +633,36 @@ async def generate_voice_response(
     try:
         model_name = getattr(cfg, "VERSATILE_MODEL_NAME", cfg.MODEL_NAME) if is_greeting else getattr(cfg, "FAST_MODEL_NAME", cfg.MODEL_NAME)
         max_t = getattr(cfg, "MAX_TOKENS", 400)
-        response = await _client.chat.completions.create(
-            model=model_name,
-            messages=messages,
-            temperature=0.45,
-            max_tokens=max_t
-        )
-        msg_obj = response.choices[0].message
-        content = msg_obj.content or ""
+        
+        # Bounded retry call to Groq API to handle HTTP 429 / Timeouts
+        content = await _call_groq_with_retry(messages, model_name, max_tokens=max_t, temperature=0.45, max_attempts=2)
         clean_text = _sanitize_llm_text(content)
         if not clean_text or len(clean_text.strip()) < 2:
-            clean_text = "Understood! Could you tell me a bit more about what location or budget you have in mind?"
+            return _get_contextual_fallback(session_lang, prompt, is_greeting, history, slots=slots, domain=domain)
+
+        # Response Language Validation before TTS Handoff (0ms Fallback, 0 extra LLM calls)
+        from llm.language_utils import validate_response_language
+        is_valid, reason = validate_response_language(clean_text, session_lang)
+        if not is_valid:
+            logger.warning("[RESPONSE VALIDATOR] Language mismatch detected: %s. Returning locked contextual fallback.", reason)
+            return _get_contextual_fallback(session_lang, prompt, is_greeting, history, slots=slots, domain=domain)
+
         return clean_text
     except Exception as e:
-        logger.error(f"Groq voice generation error: {e}")
-        if is_greeting:
-            return "Hi, this is Priya from Suncity Apartments. Are you looking to buy or rent a property?"
-        return "Understood! Could you tell me a bit more about what location or budget you have in mind?"
+        logger.error(f"Groq voice generation exception: {e}")
+        return _get_contextual_fallback(session_lang, prompt, is_greeting, history, slots=slots, domain=domain)
+
+_COMPANY_QUESTION_PATTERNS = re.compile(
+    r"\b(?:what does (?:this|your) company do|what do you do|who is your CEO|who is the CEO|who founded|who created|who is the owner|where is your office|where are you located|tell me about your company|company details|company profile|what is suncity|what is this company|about suncity|suncity apartments|tell me about suncity|who are you|who are you calling from|which company are you calling from|headquarters|headquarter|head office|ऑफिस|मुख्यालय|कंपनी क्या करती है|सनसिटी क्या है|प्रोजेक्ट क्या है)\b",
+    re.IGNORECASE,
+)
+
+
+def _quick_is_company_question(text: str) -> bool:
+    if not text:
+        return False
+    return bool(_COMPANY_QUESTION_PATTERNS.search(text))
+
 
 # Legacy backward-compatible RAG wrapper for Pipecat demo sessions
 async def generate_response(
@@ -314,17 +684,18 @@ async def generate_response(
         global_prompt = getattr(state_manager, "global_prompt", "") or (state_manager.schema.get("global_prompt", "") if (hasattr(state_manager, "schema") and state_manager.schema) else "")
         summary_markdown = _extract_summary_from_prompt(global_prompt)
         
-        # Classify the input
+        # Fast path classification without extra LLM call on every turn
         classification = "node_response"
-        if current_node and user_text and user_text.strip():
-            classification = await _classify_message(user_text, current_node, language)
+        if user_text and user_text.strip():
+            if _quick_is_company_question(user_text):
+                classification = "company_question"
 
         if classification == "company_question":
-            # Search JSON and Summary & Answer
+            domain = state_manager.schema.get("domain", "real_estate") if (hasattr(state_manager, "schema") and state_manager.schema) else "real_estate"
             nodes = state_manager.schema.get("conversationFlow", {}).get("nodes", []) if (hasattr(state_manager, "schema") and state_manager.schema) else []
             
             # 1. JSON Lookup
-            json_answer = _search_json_knowledge(user_text, nodes)
+            json_answer = _search_json_knowledge(user_text, nodes, language=language, domain=domain)
             json_matched = bool(json_answer)
             
             answer = ""
@@ -347,26 +718,36 @@ async def generate_response(
                 
                 if retrieved_chunks:
                     llm_called = True
-                    answer = await _generate_answer_from_chunks(user_text, retrieved_chunks, language)
+                    answer = await _generate_answer_from_chunks(user_text, retrieved_chunks, language, domain=domain)
                     answer_source = "Summary"
                     context_len = sum(len(c) for c in retrieved_chunks)
                 else:
                     # 3. LLM fallback
                     llm_called = True
-                    answer = await _generate_llm_fallback_answer(user_text, summary_markdown or "", language)
+                    answer = await _generate_llm_fallback_answer(user_text, summary_markdown or "", language, domain=domain)
                     answer_source = "LLM"
                     context_len = len(summary_markdown) if summary_markdown else 0
 
-            # Get resume bridge
-            resume_question, resume_bridge = _get_resume_bridge(
-                current_node,
-                state_manager.conversation_data if hasattr(state_manager, "conversation_data") else {},
-                language,
-            )
-            
+            if any(k in user_text.lower() for k in ["who are you", "who is this", "kon ho", "kaun ho", "कौन हो", "आपका नाम"]):
+                domain = "real_estate"
+                if state_manager and hasattr(state_manager, "schema") and state_manager.schema:
+                    domain = state_manager.schema.get("domain", "real_estate")
+                if domain == "education":
+                    if language == "hi":
+                        answer = "नमस्ते! मैं आरोही बोल रही हूँ, आपकी एजुकेशन काउंसलर। मैं आपको कोर्स, कॉलेज, एंट्रेंस एग्जाम और एडमिशन प्रोसेस के लिए गाइड कर सकती हूँ।"
+                    elif language == "hinglish":
+                        answer = "Hi! Main Aarohi baat kar rahi hoon, aapki education counsellor. Main aapko courses, colleges, entrance exams aur study abroad ke liye guide kar sakti hoon."
+                    else:
+                        answer = "Hi, I'm Aarohi, your AI education counsellor. I can help you explore courses, colleges, entrance exams, and study abroad options."
+                else:
+                    if language == "hi":
+                        answer = "नमस्ते! मैं सनसिटी अपार्टमेंट्स से प्रिया बोल रही हूँ। मैं आपको फ्लैट्स और प्रॉपर्टी डिटेल्स के बारे में जानकारी दे सकती हूँ।"
+                    elif language == "hinglish":
+                        answer = "Hi! Main Suncity Apartments se Priya baat kar rahi hoon. Main aapko property details aur site visit ke liye assist kar sakti hoon."
+                    else:
+                        answer = "Hello! This is Priya from Suncity Apartments. I'm here to assist you with finding the right property."
+                    
             finalized_response = answer
-            if resume_bridge:
-                finalized_response = f"{answer} {resume_bridge}"
 
             # Detailed runtime logs matching the user checklist exactly
             logger.info(
@@ -383,7 +764,7 @@ async def generate_response(
                 f"  - LLM Invoked?: {llm_called}\n"
                 f"  - LLM Context Size: {context_len} chars\n"
                 f"  - Final Answer Source: {answer_source}\n"
-                f"  - Resume Previous Node: \"{resume_question}\""
+                f"  - Resume Previous Node: None (Direct Answer)"
             )
             
             # Record response for anti-repetition
@@ -408,22 +789,49 @@ async def generate_response(
 
     # 2. Reconstruct slots
     slots = {
-        "intent_value": None,
-        "budget_range": None,
-        "preferred_bhk": None,
+        "bhk": None,
         "location": None,
-        "timeline_weeks": None,
-        "contact_validated": None
+        "property_type": None,
+        "preferred_bhk": None,
+        "current_qualification": None,
+        "preferred_course": None,
+        "preferred_specialization": None,
+        "preferred_city": None,
+        "preferred_country": None,
+        "study_abroad": None,
+        "percentage": None,
+        "budget_range": None,
+        "budget": None,
+        "entrance_exam": None,
+        "career_goal": None,
+        "user_name": None,
+        "phone": None
     }
     if state_manager and hasattr(state_manager, "conversation_data"):
         data = state_manager.conversation_data
+        slots["bhk"] = data.get("bhk") or data.get("property_type")
+        slots["location"] = data.get("location") or data.get("preferred_city")
+        slots["property_type"] = data.get("property_type") or data.get("bhk")
+        slots["preferred_bhk"] = data.get("preferred_bhk") or data.get("bhk")
+        slots["current_qualification"] = data.get("current_qualification")
+        slots["preferred_course"] = data.get("preferred_course")
+        slots["preferred_specialization"] = data.get("preferred_specialization")
+        slots["preferred_city"] = data.get("preferred_city") or data.get("location")
+        slots["preferred_country"] = data.get("preferred_country")
+        slots["study_abroad"] = data.get("study_abroad")
+        slots["percentage"] = data.get("percentage")
+        slots["budget"] = data.get("budget")
         slots["budget_range"] = data.get("budget")
-        slots["preferred_bhk"] = data.get("property_type")
-        slots["intent_value"] = data.get("intent")
-        slots["location"] = data.get("location")
-        slots["timeline_weeks"] = data.get("timeline")
+        slots["entrance_exam"] = data.get("entrance_exam")
+        slots["career_goal"] = data.get("career_goal")
+        slots["user_name"] = data.get("user_name")
+        slots["phone"] = data.get("phone")
 
     # 3. Create active Graph state
+    domain = "real_estate"
+    if state_manager and hasattr(state_manager, "schema") and state_manager.schema:
+        domain = state_manager.schema.get("domain", "real_estate")
+
     graph_state = {
         "messages": messages,
         "extracted_slots": slots,
@@ -433,11 +841,10 @@ async def generate_response(
         "retry_count": 0,
         "user_input": user_text,
         "language": language,   # ← pass active session language to all node handlers
+        "domain": domain,       # ← pass active domain to all node handlers
     }
 
     # 4. Handle start greeting vs subsequent turns
-    # Both "__CONNECTED__" and CALL_CONNECTED_TRIGGER are system startup signals —
-    # skip intent extraction (saves 1-2s) and go straight to GREETING node.
     _SYSTEM_TRIGGERS = {"__CONNECTED__", "[System:"}
     is_system_trigger = user_text == "__CONNECTED__" or user_text.startswith("[System:")
     if is_system_trigger:
@@ -451,29 +858,35 @@ async def generate_response(
         
         if cfg.ENABLE_SINGLE_CALL_FAST_PATH and not is_first_turn and word_count <= 15 and last_confidence > 0.8:
             logger.info("Taking single-call fast path for LLM response.")
-            # We pass the global prompt as context
             global_prompt = ""
             if state_manager:
                 global_prompt = getattr(state_manager, "global_prompt", "") or (state_manager.schema.get("global_prompt", "") if hasattr(state_manager, "schema") else "")
                 
             combined = await generate_combined_intent_and_response(user_text, conversation_history or [], global_prompt)
-            
-            # Sync back state
-            es = combined.intent_analysis.entities
-            if state_manager and hasattr(state_manager, "conversation_data"):
-                state_manager.current_node_id = combined.intent_analysis.intent
-                state_manager.conversation_data["budget"] = es.budget_range
-                state_manager.conversation_data["property_type"] = es.preferred_bhk
-                state_manager.conversation_data["intent"] = es.intent_value
-                state_manager.conversation_data["location"] = es.location
-                state_manager.conversation_data["timeline"] = es.timeline_weeks
-                state_manager.last_intent_confidence = combined.intent_analysis.confidence_score
-            
-            # Record response
-            if hasattr(state_manager, "record_response"):
-                state_manager.record_response(combined.spoken_reply_text)
+            if combined and combined.spoken_reply_text and combined.spoken_reply_text != "Give me just one moment...":
+                # Sync back state
+                es = combined.intent_analysis.entities
+                if state_manager and hasattr(state_manager, "conversation_data"):
+                    state_manager.current_node_id = combined.intent_analysis.intent
+                    if es.current_qualification: state_manager.conversation_data["current_qualification"] = es.current_qualification
+                    if es.preferred_course: state_manager.conversation_data["preferred_course"] = es.preferred_course
+                    if es.preferred_specialization: state_manager.conversation_data["preferred_specialization"] = es.preferred_specialization
+                    if es.preferred_city: state_manager.conversation_data["preferred_city"] = es.preferred_city
+                    if es.preferred_country: state_manager.conversation_data["preferred_country"] = es.preferred_country
+                    if es.study_abroad is not None: state_manager.conversation_data["study_abroad"] = es.study_abroad
+                    if es.percentage: state_manager.conversation_data["percentage"] = es.percentage
+                    if es.budget_range: state_manager.conversation_data["budget"] = es.budget_range
+                    if es.entrance_exam: state_manager.conversation_data["entrance_exam"] = es.entrance_exam
+                    if es.career_goal: state_manager.conversation_data["career_goal"] = es.career_goal
+                    state_manager.last_intent_confidence = combined.intent_analysis.confidence_score
                 
-            return combined.spoken_reply_text, (combined.intent_analysis.intent == "CLOSING")
+                # Record response
+                if hasattr(state_manager, "record_response"):
+                    state_manager.record_response(combined.spoken_reply_text)
+                    
+                return combined.spoken_reply_text, (combined.intent_analysis.intent == "CLOSING")
+            else:
+                logger.info("Fast path JSON generation failed. Continuing with standard pipeline.")
 
         graph_state["messages"].append(HumanMessage(content=user_text))
         # Update slots and resolve transitions
@@ -496,73 +909,44 @@ async def generate_response(
         if isinstance(last_msg, AIMessage):
             reply = last_msg.content
 
-    # 7. Sync slots back to legacy state manager
+    # 7. Sync slots back to legacy state manager safely
     if state_manager and hasattr(state_manager, "conversation_data"):
         state_manager.current_node_id = graph_state["current_node"]
         es = graph_state["extracted_slots"]
-        state_manager.conversation_data["budget"] = es.get("budget_range")
-        state_manager.conversation_data["property_type"] = es.get("preferred_bhk")
-        state_manager.conversation_data["intent"] = es.get("intent_value")
-        state_manager.conversation_data["location"] = es.get("location")
-        state_manager.conversation_data["timeline"] = es.get("timeline_weeks")
+        val_qual = es.get("current_qualification")
+        val_course = es.get("preferred_course")
+        val_spec = es.get("preferred_specialization")
+        val_city = es.get("preferred_city") or es.get("location")
+        val_country = es.get("preferred_country")
+        val_abroad = es.get("study_abroad")
+        val_pct = es.get("percentage")
+        val_budget = es.get("budget") or es.get("budget_range")
+        val_exam = es.get("entrance_exam")
+        val_goal = es.get("career_goal")
+        
+        if val_qual: state_manager.conversation_data["current_qualification"] = val_qual
+        if val_course: state_manager.conversation_data["preferred_course"] = val_course
+        if val_spec: state_manager.conversation_data["preferred_specialization"] = val_spec
+        if val_city: state_manager.conversation_data["preferred_city"] = val_city
+        if val_country: state_manager.conversation_data["preferred_country"] = val_country
+        if val_abroad is not None: state_manager.conversation_data["study_abroad"] = val_abroad
+        if val_pct: state_manager.conversation_data["percentage"] = val_pct
+        if val_budget: state_manager.conversation_data["budget"] = val_budget
+        if val_exam: state_manager.conversation_data["entrance_exam"] = val_exam
+        if val_goal: state_manager.conversation_data["career_goal"] = val_goal
+        if graph_state.get("_session_ended") or graph_state["current_node"] == "CLOSING":
+            state_manager._session_ended = True
 
-    is_terminal = (graph_state["current_node"] == "CLOSING")
+    is_terminal = (graph_state["current_node"] == "CLOSING") or bool(graph_state.get("_session_ended"))
     return reply, is_terminal
 
 # ── RAG HINTS, PATTERNS, CONSTANTS ────────────────────────────────────────────
 _BUDGET_PATTERN = re.compile(
-    r"\b(?:budget|price|range|around|approx|approximately|mera budget|budget hai|budget is)?\s*"
-    r"(\d+(?:\.\d+)?)\s*(crore|crores|cr|lakh|lakhs|lac|lacs|thousand|k|करोड़|करोड|लाख|लख|हज़ार|हजार)\b",
+    r"\b(?:budget|price|fee|fees|cost|range|around|approx|approximately|mera budget|budget hai|budget is)?\s*"
+    r"(\d+(?:[.,]\d+)*(?:\s*(?:to|-|से)\s*\d+(?:[.,]\d+)*)?)\s*"
+    r"(crore|crores|cr|lakh|lakhs|lac|lacs|thousand|k|करोड़|करोड|लाख|लख|हज़ार|हजार)?\b",
     re.IGNORECASE,
 )
-_BUY_HINTS = (
-    "buy", "buying", "looking to buy", "want to buy", "purchase", "purchasing",
-    "own house", "own home", "buy property", "looking for a property",
-    "looking to purchase", "planning to buy", "interested in buying",
-    "searching for property", "khud ke liye", "apne liye", "rehne ke liye",
-    "ghar ke liye", "for myself", "for self", "self use", "personal use",
-    "to live", "move in", "own use", "own flat",
-    "buy karna hai", "property buy karni hai", "ghar lena hai", "खरीदना",
-    "खरीदनी है", "घर लेना है", "फ्लैट लेना है"
-)
-_INVEST_HINTS = (
-    "invest", "investment", "investing", "property investment",
-    "investment purpose", "investor", "investment ke liye", "nivesh ke liye",
-    "return ke liye", "invest karna", "for investment", "roi", "rental income",
-    "invest karna hai", "निवेश", "इन्वेस्टमेंट"
-)
-_RENT_HINTS = (
-    "rent", "renting", "lease", "looking for rental", "looking to rent",
-    "need a rental property", "rent a flat", "rent pe", "kiraye pe", "kiraya",
-    "on rent", "rent ke liye", "for rent", "to rent", "किराए पर", "किराए के लिए",
-    "rent par"
-)
-_LOCATION_SUGGESTION_HINTS = (
-    "suggest city", "suggest cities", "suggest me city", "suggest me cities",
-    "suggest area", "suggest areas", "recommend city", "recommend cities",
-    "recommend area", "recommend areas", "which city", "which area",
-    "best city", "best cities", "best area", "best location", "good location",
-    "any options", "available options",
-)
-_PURPOSE_QUESTION_HINTS = (
-    "what is it", "what is this", "what's it", "whats it",
-    "what is this about", "what's this about", "whats this about",
-    "what are you talking about", "why are you calling", "why did you call",
-    "purpose of call", "reason for call", "kya hai", "kis baare",
-)
-_CONFIRMATION_TEXTS = {
-    "yes", "yeah", "yep", "yup", "ok", "okay", "sure", "go ahead",
-    "tell me", "go on", "continue", "haan", "han", "ji", "theek hai",
-}
-_DENIAL_TEXTS = {"no", "nope", "nah", "nahi", "nai", "na", "nako"}
-_BUSY_HINTS = (
-    "busy", "call later", "call me later", "not now", "in a meeting",
-    "cant talk", "can't talk", "driving", "not a good time",
-)
-_NOT_INTERESTED_HINTS = (
-    "not interested", "not looking", "no requirement", "dont need", "don't need",
-)
-_WRONG_PERSON_HINTS = ("wrong number", "wrong person", "not prashant", "this is not")
 
 def _normalize_budget_unit(unit: str) -> str:
     unit = unit.lower()
@@ -575,12 +959,151 @@ def _normalize_budget_unit(unit: str) -> str:
     return unit
 
 def _extract_budget_entity(user_text: str) -> str | None:
-    match = _BUDGET_PATTERN.search(user_text or "")
+    text = (user_text or "").strip()
+    if not text:
+        return None
+        
+    clean_num_text = text.replace(",", "").replace("-", "").replace(" ", "")
+    # Phone numbers (10 digits) should NOT be extracted as budget
+    if re.search(r"\b[6-9]\d{9}\b", clean_num_text) or re.search(r"\b\d{10}\b", clean_num_text):
+        return None
+
+    # Check for raw numbers e.g. 50,000,000 or 50000000 or 5000000
+    num_match = re.search(r"\b(\d{6,9})\b", clean_num_text)
+    if num_match:
+        val = int(num_match.group(1))
+        if val >= 10000000:
+            cr = val / 10000000
+            return f"{int(cr) if cr.is_integer() else round(cr, 2)} crore"
+        elif val >= 100000:
+            lk = val / 100000
+            return f"{int(lk) if lk.is_integer() else round(lk, 2)} lakh"
+
+    # Pre-normalize phrases like "50 lakhs to 70 lakhs" -> "50 to 70 lakhs"
+    normalized_text = re.sub(
+        r"(\d+)\s*(?:lakh|lakhs|lac|lacs|crore|crores|cr|लाख)\s*(?:to|-|से)\s*(\d+)",
+        r"\1 to \2",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    match = _BUDGET_PATTERN.search(normalized_text)
     if not match:
         return None
-    number = match.group(1)
-    unit = _normalize_budget_unit(match.group(2))
-    return f"{number} {unit}"
+    val_str = match.group(1).strip()
+    unit_str = match.group(2)
+    
+    if not unit_str:
+        raw_val = val_str.replace(",", "")
+        if raw_val.isdigit():
+            val = int(raw_val)
+            if val >= 10000000:
+                return f"{val // 10000000} crore"
+            elif val >= 100000:
+                return f"{val // 100000} lakh"
+        return None
+
+    unit = _normalize_budget_unit(unit_str)
+    if any(sep in val_str for sep in ["-", "to", "से"]):
+        parts = re.split(r"\s*(?:-|to|से)\s*", val_str)
+        if len(parts) == 2:
+            return f"{parts[0]}-{parts[1]} {unit}"
+            
+    return f"{val_str} {unit}"
+
+def _extract_course_entity(user_text: str) -> str | None:
+    text = (user_text or "").strip().lower()
+    if not text:
+        return None
+    courses_map = {
+        "MCA": [r"\bmca\b", r"\bm\.c\.a\.\b", r"\bmaster of computer applications?\b"],
+        "BCA": [r"\bbca\b", r"\bb\.c\.a\.\b", r"\bbachelor of computer applications?\b"],
+        "B.Tech": [r"\bbtech\b", r"\bb\.tech\b", r"\bb\.e\.\b", r"\bbe\b", r"\bbachelor of technology\b"],
+        "M.Tech": [r"\bmtech\b", r"\bm\.tech\b", r"\bm\.e\.\b", r"\bme\b", r"\bmaster of technology\b"],
+        "MBA": [r"\bmba\b", r"\bm\.b\.a\.\b", r"\bmaster of business administration\b"],
+        "B.Com": [r"\bbcom\b", r"\bb\.com\b"],
+        "B.Sc": [r"\bbsc\b", r"\bb\.sc\b"],
+        "M.Sc": [r"\bmsc\b", r"\bm\.sc\b"],
+        "MBBS": [r"\bmbbs\b", r"\bm\.b\.b\.s\.\b"],
+        "BBA": [r"\bbba\b", r"\bb\.b\.a\.\b"],
+        "LLB": [r"\bllb\b", r"\bl\.l\.b\.\b"],
+        "LLM": [r"\bllm\b", r"\bl\.l\.m\.\b"],
+    }
+    for canonical, patterns in courses_map.items():
+        for pat in patterns:
+            if re.search(pat, text):
+                return canonical
+    return None
+
+def _extract_qualification_entity(user_text: str) -> str | None:
+    text = (user_text or "").strip().lower()
+    if not text:
+        return None
+    if re.search(r"\b(12th|12\s*th|hsc|intermediate|senior\s*secondary)\b", text):
+        return "12th"
+    doing_match = re.search(r"\b(?:doing|completed|passed|from|in|studied|studying)\s+(bca|mca|btech|mtech|mba|bcom|bsc|msc|mbbs|bba|llb|llm)\b", text)
+    if doing_match:
+        val = doing_match.group(1).upper()
+        norm_map = {"BTECH": "B.Tech", "MTECH": "M.Tech", "BCOM": "B.Com", "BSC": "B.Sc", "MSC": "M.Sc"}
+        return norm_map.get(val, val)
+    return _extract_course_entity(user_text)
+
+def _extract_city_entity(user_text: str) -> str | None:
+    text = (user_text or "").strip().lower()
+    if not text:
+        return None
+    cities = {
+        "Pune": ["pune", "पुणे"],
+        "Jaipur": ["jaipur", "जयपुर"],
+        "Jodhpur": ["jodhpur", "जोधपुर"],
+        "Mumbai": ["mumbai", "मुंबई", "bombay"],
+        "Delhi": ["delhi", "new delhi", "दिल्ली"],
+        "Bangalore": ["bangalore", "bengaluru", "बेंगलुरु"],
+        "Hyderabad": ["hyderabad", "हैदराबाद"],
+        "Chennai": ["chennai", "चेन्नई"],
+        "Kolkata": ["kolkata", "calcutta"],
+        "Ahmedabad": ["ahmedabad"],
+    }
+    for canonical, variants in cities.items():
+        if any(v in text for v in variants):
+            return canonical
+    return None
+
+def _extract_country_entity(user_text: str) -> str | None:
+    text = (user_text or "").strip().lower()
+    if not text:
+        return None
+    countries = {
+        "USA": ["usa", "united states", "america"],
+        "UK": ["uk", "united kingdom", "england"],
+        "Canada": ["canada"],
+        "Germany": ["germany"],
+        "Australia": ["australia"],
+        "India": ["india", "भारत"],
+    }
+    for canonical, variants in countries.items():
+        if any(v in text for v in variants):
+            return canonical
+    return None
+
+def _extract_study_abroad_entity(user_text: str) -> bool | None:
+    text = (user_text or "").strip().lower()
+    abroad_terms = ["study abroad", "abroad", "foreign", "outside india", "usa", "uk", "canada", "germany", "australia"]
+    if any(term in text for term in abroad_terms):
+        return True
+    return None
+
+def _extract_percentage_entity(user_text: str) -> str | None:
+    text = (user_text or "").strip().lower()
+    match = re.search(r"\b(\d{2}(?:\.\d{1,2})?)\s*(?:%|percent|pratisat|प्रतिशत)?\b", text)
+    if match and ("%" in text or "percent" in text or "प्रतिशत" in text or "marks" in text or "gpa" in text or "score" in text or "got" in text or "received" in text or "aaya" in text or "aaye" in text):
+        val = float(match.group(1))
+        if 35.0 <= val <= 100.0:
+            return f"{int(val) if val.is_integer() else val}%"
+    return None
+
+_CONFIRMATION_TEXTS = {"yes", "yeah", "yep", "sure", "ok", "okay", "haan", "ha", "haanji", "haji", "bilkul", "thik hai", "thik", "sahi hai", "हाँ", "ठीक है"}
+_DENIAL_TEXTS = {"no", "nope", "nah", "na", "nahi", "nahin", "nhi", "नहीं"}
 
 def _classify_local_intent(user_text: str) -> dict[str, Any] | None:
     clean_text = re.sub(r"[^\w\s'?]", " ", (user_text or "").strip().lower())
@@ -589,57 +1112,52 @@ def _classify_local_intent(user_text: str) -> dict[str, Any] | None:
         return None
 
     entities: dict[str, Any] = {
-        "location": None,
+        "current_qualification": None,
+        "preferred_course": None,
+        "preferred_specialization": None,
+        "preferred_city": None,
+        "preferred_country": None,
+        "study_abroad": None,
+        "percentage": None,
         "budget": None,
-        "property_type": None,
-        "intent_value": None,
-        "timeline": None,
+        "entrance_exam": None,
+        "career_goal": None,
         "confirmation": None,
     }
 
-    if any(phrase in clean_text for phrase in _PURPOSE_QUESTION_HINTS):
-        return {"intent": "user_question", "entities": entities}
-    has_location_suggestion = any(phrase in clean_text for phrase in _LOCATION_SUGGESTION_HINTS)
-    has_location_suggestion = has_location_suggestion or (
-        ("suggest" in clean_text or "recommend" in clean_text)
-        and any(word in clean_text.split() for word in {"city", "cities", "area", "areas", "location", "locations"})
-    )
-    if has_location_suggestion:
-        return {"intent": "ask_location_suggestion", "entities": entities}
+    qual = _extract_qualification_entity(user_text)
+    course = _extract_course_entity(user_text)
+    city = _extract_city_entity(user_text)
+    country = _extract_country_entity(user_text)
+    abroad = _extract_study_abroad_entity(user_text)
+    pct = _extract_percentage_entity(user_text)
+    budget = _extract_budget_entity(user_text)
 
-    # Check for direct city/location matches (local preprocessing bypass)
-    _LOCAL_LOCATIONS_MAP = {
-        "Jaipur": ["jaipur", "जयपुर", "जयपूर", "उजए पूर", "उजएपुर", "उजयपूर", "उदयपुर", "udaypur", "udaipur", "ujae pur", "ujaepur", "ujae poor", "ujaepoor"],
-        "Jodhpur": ["jodhpur", "जोधपुर", "jodhpur mein", "jodhpur me"],
-        "Madurai": ["madurai", "मदुरै", "madurai mein", "madurai me"],
-        "Gurgaon": ["gurgaon", "gurugram", "गुड़गांव", "गुड़गांव", "गुरुग्राम", "गुड़गाँव", "gurgao", "gurgoan"],
-        "Zirakpur": ["zirakpur", "जीरकpur", "झिरकपुर", "zirak", "jirakpur", "zirakhpur", "zirak pur"],
-        "Mathura": ["mathura", "मथुरा", "वृंदावन", "वृन्दावन", "vrindavan", "vrindaban", "vindravan"]
-    }
-    matching_text = re.sub(r'[.?।!,;]', '', user_text.lower()).strip()
-    matching_words = matching_text.split()
-    matched_loc = None
-    for canonical_loc, variants in _LOCAL_LOCATIONS_MAP.items():
-        for variant in variants:
-            if variant in matching_text or any(variant == w for w in matching_words):
-                matched_loc = canonical_loc
-                break
-        if matched_loc:
-            break
-            
-    if matched_loc:
-        entities["location"] = matched_loc
-        budget = _extract_budget_entity(user_text)
-        if budget:
-            entities["budget"] = budget
-        return {"intent": "provide_location", "entities": entities}
+    # If user says "doing BCA and want MCA"
+    multi_match = re.search(r"\b(?:doing|in|completed|passed)\s+([a-z0-9.]+)\s+.*(?:want|planning|looking for|pursue)\s+([a-z0-9.]+)\b", clean_text)
+    if multi_match:
+        q_candidate = _extract_course_entity(multi_match.group(1))
+        c_candidate = _extract_course_entity(multi_match.group(2))
+        if q_candidate: qual = q_candidate
+        if c_candidate: course = c_candidate
 
-    if any(phrase in clean_text for phrase in _WRONG_PERSON_HINTS):
-        return {"intent": "deny_identity", "entities": entities}
-    if any(phrase in clean_text for phrase in _NOT_INTERESTED_HINTS):
-        return {"intent": "deny_interest", "entities": entities}
-    if any(phrase in clean_text for phrase in _BUSY_HINTS):
-        return {"intent": "deny_time", "entities": entities}
+    if qual: entities["current_qualification"] = qual
+    if course: entities["preferred_course"] = course
+    if city: entities["preferred_city"] = city
+    if country: entities["preferred_country"] = country
+    if abroad is not None: entities["study_abroad"] = abroad
+    if pct: entities["percentage"] = pct
+    if budget: entities["budget"] = budget
+
+    if any(k in clean_text for k in ["bca", "mca", "btech", "mba", "mtech", "12th"]):
+        if qual and course and qual != course:
+            entities["current_qualification"] = qual
+            entities["preferred_course"] = course
+        elif course and not qual:
+            entities["preferred_course"] = course
+
+    if any(val is not None for val in entities.values()):
+        return {"intent": "provide_info", "entities": entities}
 
     if clean_text in _CONFIRMATION_TEXTS:
         entities["confirmation"] = "yes"
@@ -651,76 +1169,25 @@ def _classify_local_intent(user_text: str) -> dict[str, Any] | None:
     return None
 
 def _enrich_intent_entities(user_text: str, intent: str, entities: dict[str, Any], state_manager: Optional[Any] = None) -> tuple[str, dict[str, Any]]:
-    clean_text = (user_text or "").strip().lower()
     entities = dict(entities)
+    qual = _extract_qualification_entity(user_text)
+    course = _extract_course_entity(user_text)
+    city = _extract_city_entity(user_text)
+    country = _extract_country_entity(user_text)
+    abroad = _extract_study_abroad_entity(user_text)
+    pct = _extract_percentage_entity(user_text)
+    budget = _extract_budget_entity(user_text)
 
-    has_budget_field = "budget" in entities or (state_manager and hasattr(state_manager, "extraction_fields") and "budget" in state_manager.extraction_fields)
-    if has_budget_field and not entities.get("budget"):
-        budget = _extract_budget_entity(user_text)
-        if budget:
-            entities["budget"] = budget
-            if intent in {"unclear", "provide_info"}:
-                intent = "provide_budget"
+    if qual and not entities.get("current_qualification"): entities["current_qualification"] = qual
+    if course and not entities.get("preferred_course"): entities["preferred_course"] = course
+    if city and not entities.get("preferred_city"): entities["preferred_city"] = city
+    if country and not entities.get("preferred_country"): entities["preferred_country"] = country
+    if abroad is not None and entities.get("study_abroad") is None: entities["study_abroad"] = abroad
+    if pct and not entities.get("percentage"): entities["percentage"] = pct
+    if budget and not entities.get("budget"): entities["budget"] = budget
 
-    # Deterministic location fallback
-    has_location_field = "location" in entities or (state_manager and hasattr(state_manager, "extraction_fields") and "location" in state_manager.extraction_fields)
-    if has_location_field and not entities.get("location"):
-        _COMMON_LOCATIONS_MAP = {
-            "Mumbai": ["mumbai", "मंबई", "bombay", "mumbai mein"],
-            "Pune": ["pune", "पुणे"],
-            "Chennai": ["chennai", "चेन्नई"],
-            "Delhi": ["delhi", "new delhi", "दिल्ली"],
-            "Noida": ["noida", "नोएडा"],
-            "Gurgaon": ["gurgaon", "gurugram", "गुड़गांव", "गुरुग्राम", "gurgaon mein", "gurgaon me"],
-            "Jaipur": ["jaipur", "जयपुर", "जयपूर", "उजए पूर", "उजएपुर", "उदयपुर", "udaypur", "jaipur mein", "jaipur me"],
-            "Jodhpur": ["jodhpur", "जोधपुर", "jodhpur mein", "jodhpur me"],
-            "Madurai": ["madurai", "मदुरै", "madurai mein", "madurai me"],
-            "Zirakpur": ["zirakpur", "जीरकपुर", "झिरकपुर", "zirakpur mein", "zirakpur me"],
-            "Mathura": ["mathura", "मथुरा", "वृंदावन", "vrindavan", "mathura mein", "mathura me", "vrindavan mein", "vrindavan me"],
-            "Hyderabad": ["hyderabad", "हैदराबाद"],
-            "Kolkata": ["kolkata", "calcutta", "कोलकाता"],
-            "Ahmedabad": ["ahmedabad", "अहमदाबाद"],
-        }
-        for canonical_loc, variants in _COMMON_LOCATIONS_MAP.items():
-            for variant in variants:
-                if variant in clean_text:
-                    entities["location"] = canonical_loc
-                    if intent in {"unclear", "provide_info"}:
-                        intent = "provide_location"
-                    break
-            if entities.get("location"):
-                break
-
-    has_intent_field = "intent_value" in entities or (state_manager and hasattr(state_manager, "extraction_fields") and "intent_value" in state_manager.extraction_fields)
-    if has_intent_field:
-        has_buy = any(phrase in clean_text for phrase in _BUY_HINTS) or "buy" in clean_text.split()
-        has_invest = any(phrase in clean_text for phrase in _INVEST_HINTS)
-        has_rent = any(phrase in clean_text for phrase in _RENT_HINTS) or "rent" in clean_text.split()
-
-        if has_buy:
-            entities["intent_value"] = "buy"
-            if intent not in {"confirm", "deny", "deny_interest", "deny_time", "deny_identity", "deny_visit_time"}:
-                intent = "provide_intent"
-        elif has_invest:
-            entities["intent_value"] = "invest"
-            if intent not in {"confirm", "deny", "deny_interest", "deny_time", "deny_identity", "deny_visit_time"}:
-                intent = "provide_intent"
-        elif has_rent:
-            entities["intent_value"] = "rent"
-            if intent not in {"confirm", "deny", "deny_interest", "deny_time", "deny_identity", "deny_visit_time"}:
-                intent = "provide_intent"
-
-        if entities.get("intent_value") in {"buy", "rent", "invest"} and intent not in {"confirm", "deny", "deny_interest", "deny_time", "deny_identity", "deny_visit_time"}:
-            intent = "provide_intent"
-
-    # Promote unclear/provide_info intent to specific slot-filling intent if entities are populated
-    if intent in {"unclear", "provide_info"}:
-        if entities.get("location"):
-            intent = "provide_location"
-        elif entities.get("budget"):
-            intent = "provide_budget"
-        elif entities.get("intent_value"):
-            intent = "provide_intent"
+    if any(val is not None for val in entities.values()) and intent in {"unclear", "provide_info"}:
+        intent = "provide_info"
 
     return intent, entities
 
@@ -914,9 +1381,30 @@ def _retrieve_semantic_chunks_tfidf(query: str, summary_markdown: str) -> tuple[
 
     return headings, chunks, scores
 
-def _search_json_knowledge(user_text: str, nodes: list[dict[str, Any]]) -> Optional[str]:
-    """Check if the user's query can be answered directly by the predefined JSON nodes/phrases."""
+def _search_json_knowledge(user_text: str, nodes: list[dict[str, Any]], language: str = "en", domain: str = "real_estate") -> Optional[str]:
+    """Check if the user's query can be answered directly by predefined company facts or JSON nodes."""
     query_clean = user_text.lower().strip().rstrip("?").strip()
+    
+    # 0ms Direct Lookup for General Company Overview Questions
+    company_overview_triggers = [
+        "what company is this",
+        "who are you",
+        "what do you do",
+        "tell me about your company",
+        "which company are you calling from"
+    ]
+    if any(trigger in query_clean for trigger in company_overview_triggers):
+        if domain == "education":
+            if language in ("hi", "hinglish"):
+                return "हम एक एजुकेशन काउंसलिंग प्लेटफॉर्म हैं जो स्टूडेंट्स को सही कोर्स, कॉलेज, एंट्रेंस एग्जाम और स्टडी एब्रॉड के लिए गाइड करते हैं।"
+            elif language == "mr":
+                return "आम्ही एक एज्युकेशन कौन्सिलिंग प्लॅटफॉर्म आहोत जो विद्यार्थ्यांना योग्य कोर्स, कॉलेज आणि अभ्यासासाठी मार्गदर्शन करतो."
+            return "We are an AI Education Counselling platform helping students discover suitable courses, colleges, entrance exams, and study abroad options."
+        else:
+            if language in ("hi", "hinglish"):
+                return "सनसिटी अपार्टमेंट्स जयपुर, जोधपुर और मदुरै में स्थित एक अग्रणी रियल एस्टेट डेवलपर है।"
+            return "Suncity Apartments is a premier real estate developer operating in Jaipur, Jodhpur, and Madurai."
+
     for node in nodes:
         node_name = (node.get("name") or "").lower()
         node_resp = (node.get("response") or "").lower()
@@ -927,6 +1415,14 @@ def _search_json_knowledge(user_text: str, nodes: list[dict[str, Any]]) -> Optio
             if "office" in node_name or "headquarter" in node_name:
                 if node.get("response"):
                     return node.get("response")
+            if domain == "real_estate":
+                if language in ("hi", "hinglish"):
+                    return "सनसिटी अपार्टमेंट्स का headquarters जयपुर में स्थित है।"
+                return "Suncity Apartments headquarters is located in Jaipur."
+            elif domain == "education":
+                if language in ("hi", "hinglish"):
+                    return "हमारा मुख्य कार्यालय पुणे में स्थित है।"
+                return "Our headquarters is located in Pune."
         if "support" in query_clean or "contact" in query_clean or "help" in query_clean:
             if "support" in node_name or "contact" in node_name:
                 if node.get("response"):
@@ -938,18 +1434,19 @@ def _search_json_knowledge(user_text: str, nodes: list[dict[str, Any]]) -> Optio
                 return node.get("response")
     return None
 
-async def _generate_answer_from_chunks(user_text: str, retrieved_chunks: list[str], language: str) -> str:
+async def _generate_answer_from_chunks(user_text: str, retrieved_chunks: list[str], language: str, domain: str = "real_estate") -> str:
     """Generate dynamic response based on retrieved semantic chunks."""
     context = "\n\n".join(retrieved_chunks)
+    active_persona = _AAROHI_PERSONA if domain == "education" else _NEHA_PERSONA
     system_prompt = (
-        "You are a factual customer advisory voice assistant.\n"
-        "Answer the user's question using only the verified facts from the company summary below.\n\n"
-        "Verified Company Facts:\n"
+        f"{active_persona}\n"
+        "Answer the user's question using ONLY verified facts from the context below.\n\n"
+        "Verified Context:\n"
         f"{context}\n\n"
         "Constraints:\n"
-        "- Do not assume, guess, or hallucinate any details. If not found, say exactly: "
-        "'I don't have that detail right now, but I can check and have our advisor get back to you.'\n"
-        "- Max 2 sentences, 20-30 words.\n"
+        "- Do not assume, guess, or hallucinate any details. If the exact answer is not present in the verified facts, say: "
+        "'I don't have that detail right now, but I can check and get back to you.'\n"
+        "- Keep response to 1 to 2 spoken sentences (max 25 words).\n"
         f"- Respond in the requested active language: {language}."
     )
     messages = [
@@ -957,28 +1454,34 @@ async def _generate_answer_from_chunks(user_text: str, retrieved_chunks: list[st
         {"role": "user", "content": user_text}
     ]
     try:
-        completion = await _client.chat.completions.create(
-            model=cfg.MODEL_NAME,
-            messages=messages,
-            temperature=0.2,
-            max_tokens=80
-        )
-        return (completion.choices[0].message.content or "").strip()
+        completion = await _call_groq_with_retry(messages, cfg.MODEL_NAME, max_tokens=80, temperature=0.2, max_attempts=2)
+        clean = (completion or "").strip()
+        if clean:
+            return clean
     except Exception as exc:
         logger.error("Failed generating LLM answer from chunks: %s", exc)
-        return "I don't have that detail right now, but I can check and have our advisor get back to you."
+    
+    if domain == "education":
+        if language in ("hi", "hinglish"):
+            return "हम स्टूडेंट्स को सही कोर्स, कॉलेज और स्टडी एब्रॉड चुनने में मदद करते हैं।"
+        return "We help students discover suitable courses, colleges, and study abroad options."
+    else:
+        if language in ("hi", "hinglish"):
+            return "सनसिटी अपार्टमेंट्स जयपुर, जोधपुर और मदुरै में स्थित एक अग्रणी रियल एस्टेट डेवलपर है।"
+        return "Suncity Apartments is a premier real estate developer operating in Jaipur, Jodhpur, and Madurai."
 
-async def _generate_llm_fallback_answer(user_text: str, summary_markdown: str, language: str) -> str:
+async def _generate_llm_fallback_answer(user_text: str, summary_markdown: str, language: str, domain: str = "real_estate") -> str:
     """Fallback LLM call when no specific chunks are retrieved, using the whole summary context."""
+    active_persona = _AAROHI_PERSONA if domain == "education" else _NEHA_PERSONA
     system_prompt = (
-        "You are a factual customer advisory voice assistant.\n"
-        "Answer the user's question using the company summary context below.\n\n"
+        f"{active_persona}\n"
+        "Answer the user's question using ONLY the company summary context below.\n\n"
         "Company Summary Context:\n"
         f"{summary_markdown}\n\n"
         "Constraints:\n"
-        "- Do not assume, guess, or hallucinate any details. If not found, say exactly: "
-        "'I don't have that detail right now, but I can check and have our advisor get back to you.'\n"
-        "- Max 2 sentences, 20-30 words.\n"
+        "- Do not assume, guess, or hallucinate any details. If the answer is not explicitly in the summary context, say: "
+        "'I don't have that detail right now, but I can check and get back to you.'\n"
+        "- Keep response to 1 to 2 spoken sentences (max 25 words).\n"
         f"- Respond in the requested active language: {language}."
     )
     messages = [
@@ -986,23 +1489,30 @@ async def _generate_llm_fallback_answer(user_text: str, summary_markdown: str, l
         {"role": "user", "content": user_text}
     ]
     try:
-        completion = await _client.chat.completions.create(
-            model=cfg.MODEL_NAME,
-            messages=messages,
-            temperature=0.2,
-            max_tokens=80
-        )
-        return (completion.choices[0].message.content or "").strip()
+        completion = await _call_groq_with_retry(messages, cfg.MODEL_NAME, max_tokens=80, temperature=0.2, max_attempts=2)
+        clean = (completion or "").strip()
+        if clean:
+            return clean
     except Exception as exc:
         logger.error("Failed generating LLM fallback answer: %s", exc)
-        return "I don't have that detail right now, but I can check and have our advisor get back to you."
+    
+    if domain == "education":
+        if language in ("hi", "hinglish"):
+            return "हम स्टूडेंट्स को सही कोर्स, कॉलेज और स्टडी एब्रॉड चुनने में मदद करते हैं।"
+        return "We help students discover suitable courses, colleges, and study abroad options."
+    else:
+        if language in ("hi", "hinglish"):
+            return "सनसिटी अपार्टमेंट्स जयपुर, जोधपुर और मदुरै में स्थित एक अग्रणी रियल एस्टेट डेवलपर है।"
+        return "Suncity Apartments is a premier real estate developer operating in Jaipur, Jodhpur, and Madurai."
 
 def _get_resume_bridge(
-    current_node: dict[str, Any],
+    current_node: Optional[dict[str, Any]],
     context: dict[str, Any],
     language: str,
 ) -> tuple[str, str]:
     """Returns (resume_question, combined_bridge_text) to return to previous flow node."""
+    if not current_node or not isinstance(current_node, dict):
+        return "", ""
     from .llm_response_generator import _resolve_template_response
     
     resume_question = _resolve_template_response(current_node, context, language)

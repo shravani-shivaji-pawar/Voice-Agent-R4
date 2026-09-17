@@ -250,6 +250,7 @@ class ConversationState(TypedDict):
     retry_count: int
     user_input: str
     language: str                   # Active session language: "en", "hi", "hinglish", "mr"
+    domain: str                     # Active domain: "real_estate", "education"
     pending_return_node: Optional[str]   # Node to resume after OPEN_DOMAIN detour
     last_intent_confidence: Optional[float]  # Confidence from last intent extraction
 

@@ -271,11 +271,13 @@ def _answer_user_question(question_type: str, language: str, state_manager: Opti
 # ─── Template response (fast path for predictable nodes) ─────────────────────
 
 def _resolve_template_response(
-    node: dict[str, Any],
+    node: Optional[dict[str, Any]],
     context: dict[str, Any],
     language: str,
 ) -> str:
     """Fill {{placeholders}} in a node's template response. Fast path, no LLM."""
+    if not node or not isinstance(node, dict):
+        return ""
     from .language_utils import localize_template
 
     collects = node.get("collects")

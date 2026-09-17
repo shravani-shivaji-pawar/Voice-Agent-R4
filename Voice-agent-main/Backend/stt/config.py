@@ -29,11 +29,11 @@ LANGUAGE: Optional[str] = None     # None = auto-detect (Hindi / Marathi / Engli
 # Runtime buffering tuned for ultra-low-latency voice calls
 TARGET_SAMPLE_RATE: int = 16000
 MIN_CHUNK_MS: int = _env_int("STT_MIN_CHUNK_MS", 100)          # 100ms — halved from 250ms for faster first dispatch
-MAX_CHUNK_MS: int = _env_int("STT_MAX_CHUNK_MS", 600)          # 600ms cap
-TRAILING_SILENCE_MS: int = _env_int("STT_TRAILING_SILENCE_MS", 180)  # 180ms — faster turn trigger
+MAX_CHUNK_MS: int = _env_int("STT_MAX_CHUNK_MS", 12000)        # 12s cap for long user utterances
+TRAILING_SILENCE_MS: int = _env_int("STT_TRAILING_SILENCE_MS", 400) # 400ms natural turn completion silence for ultra-low latency
 SILENCE_RMS_THRESHOLD: float = _env_float("STT_SILENCE_RMS_THRESHOLD", 0.003)
 MIN_TRANSCRIPT_CHARS: int = 1
 DUPLICATE_TEXT_WINDOW_S: float = _env_float("STT_DUPLICATE_TEXT_WINDOW_S", 3.0)
 ENERGY_THRESHOLD: float = _env_float("STT_ENERGY_THRESHOLD", 0.0015)
-MIN_VOICE_START_MS: int = _env_int("STT_MIN_VOICE_START_MS", 120)    # 120ms — down from 200ms
+MIN_VOICE_START_MS: int = _env_int("STT_MIN_VOICE_START_MS", 80)    # 80ms — fast voice detection start
 POST_TTS_STT_COOLDOWN_MS: int = _env_int("POST_TTS_STT_COOLDOWN_MS", 120)  # 120ms — down from 180ms

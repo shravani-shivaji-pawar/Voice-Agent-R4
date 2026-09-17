@@ -24,34 +24,75 @@ def load_agent_config() -> Dict[str, Any]:
 
 def is_low_signal(text: str) -> bool:
     """Detects short, affirmative or conversational low-signal confirmation inputs."""
-    clean = text.strip().lower().replace(".", "").replace(",", "")
+    clean = text.strip().lower().replace(".", "").replace(",", "").replace("?", "")
     low_signal_phrases = {
         "yes", "yep", "yeah", "ok", "okay", "sure", "share it", "tell me",
-        "go on", "continue", "झाल", "haan", "ho", "acha", "please"
+        "go on", "continue", "haan", "ho", "acha", "please", "hmm", "hm"
     }
-    return len(clean.split()) <= 2 or clean in low_signal_phrases
+    
+    known_slot_keywords = {
+        "bca", "mca", "btech", "mtech", "mba", "bcom", "bsc", "msc", "mbbs", "12th",
+        "pune", "jaipur", "jodhpur", "mumbai", "delhi", "bangalore", "usa", "uk", "canada",
+        "germany", "australia", "abroad", "percent", "lakh", "lakhs", "crore", "cr",
+        "पुणे", "जयपुर", "जोधपुर", "दिल्ली", "मुंबई", "बेंगलुरु"
+    }
+    words = clean.split()
+    if any(w in known_slot_keywords for w in words):
+        return False
+
+    if clean in low_signal_phrases:
+        return True
+
+    if len(words) <= 2:
+        return True
+
+    return False
 
 def is_hard_out(text: str) -> bool:
-    """Detects strong refusal / hang up intents."""
-    clean = text.lower()
-    return any(term in clean for term in ["hang up", "stop calling", "not interested", "bye", "disconnect"])
+    """Detects strong refusal / hang up intents / goodbye closing signals."""
+    clean = (text or "").lower().strip()
+    closing_terms = [
+        "bye", "goodbye", "thank you bye", "thanks bye", "okay bye", "ok bye",
+        "take care", "see you", "that's all", "no thanks", "no, thank you", "no thank you",
+        "बाय", "धन्यवाद बाय", "ठीक है बाय", "अलविदा", "शुक्रिया बाय", "ठीक है धन्यवाद"
+    ]
+    return any(term in clean for term in ["hang up", "stop calling", "not interested", "disconnect"] + closing_terms)
 
-def merge_slots(state_slots: Dict[str, Any], extracted: Any) -> Dict[str, Any]:
-    """Merges newly extracted slots without overwriting existing ones."""
+def merge_slots(state_slots: Dict[str, Any], extracted: Any, user_text: str = "") -> Dict[str, Any]:
+    """Merges newly extracted slots, supporting explicit user self-corrections while keeping state authoritative."""
     res = dict(state_slots)
-    for field in ["intent", "budget", "bhk", "timeline", "user_name"]:
-        # Map ExtractedEntities field names to our slot keys
+    text_lower = (user_text or "").lower()
+    is_self_correction = any(phrase in text_lower for phrase in ["actually", "instead", "no i mean", "sorry i meant", "correction", "changed my mind", "rather", "nahi", "नहीं"])
+    
+    education_fields = [
+        "current_qualification", "preferred_course", "preferred_specialization",
+        "preferred_city", "preferred_country", "study_abroad", "percentage",
+        "budget", "entrance_exam", "career_goal", "user_name", "phone"
+    ]
+    
+    for field in education_fields:
         entity_field_map = {
-            "intent": "intent_value",
             "budget": "budget_range",
-            "bhk": "preferred_bhk",
-            "timeline": "timeline_weeks",
-            "user_name": "user_name",
+            "preferred_city": "preferred_city",
+            "location": "preferred_city",
         }
         entity_field = entity_field_map.get(field, field)
         val = getattr(extracted, entity_field, None)
+        if val is None and hasattr(extracted, field):
+            val = getattr(extracted, field)
         if val is not None:
-            res[field] = val
+            existing_val = res.get(field)
+            if existing_val:
+                val_str = str(val).lower()
+                clean_text = text_lower.replace(",", "").replace(".", "")
+                if is_self_correction or (val_str in clean_text) or (field == "budget" and any(c.isdigit() for c in clean_text)):
+                    res[field] = val
+                    logger.info("[SLOT MERGE] Self-correction / explicit update for '%s': '%s' -> '%s'", field, existing_val, val)
+                else:
+                    logger.info("[SLOT MERGE] Preserved authoritative slot '%s': '%s' (ignored LLM guess '%s')", field, existing_val, val)
+            else:
+                res[field] = val
+                logger.info("[SLOT MERGE] Set new slot '%s': '%s'", field, val)
     return res
 
 async def process_intent_and_slots(state: ConversationState) -> ConversationState:
@@ -61,7 +102,13 @@ async def process_intent_and_slots(state: ConversationState) -> ConversationStat
         role = "assistant" if isinstance(msg, AIMessage) else "user"
         history.append({"role": role, "content": msg.content})
 
-    user_text = state.get("user_input", "")
+    raw_user_text = state.get("user_input", "")
+    from llm.language_utils import normalize_domain_vocabulary
+    user_text = normalize_domain_vocabulary(raw_user_text)
+    state["user_input"] = user_text
+
+    prev_slots = dict(state.get("extracted_slots", {}))
+    prev_location = prev_slots.get("location")
     
     # Deterministic local slot extraction pre-pass (0ms fallback)
     try:
@@ -77,12 +124,18 @@ async def process_intent_and_slots(state: ConversationState) -> ConversationStat
     analysis = await analyze_user_intent(user_text, history)
     
     # Merge slots
-    merged_slots = merge_slots(state.get("extracted_slots", {}), analysis.entities)
+    merged_slots = merge_slots(state.get("extracted_slots", {}), analysis.entities, user_text=user_text)
     for slot_key, val in enriched_entities.items():
         if val:
             norm_key = "intent" if slot_key == "intent_value" else ("bhk" if slot_key == "property_type" else slot_key)
-            if not merged_slots.get(norm_key):
+            existing_val = merged_slots.get(norm_key)
+            if not existing_val or (local_entities and local_entities.get(slot_key) is not None):
                 merged_slots[norm_key] = val
+
+    # Auto-default intent to 'buy' if location or BHK is present but intent is null
+    if (merged_slots.get("location") or merged_slots.get("bhk")) and not merged_slots.get("intent"):
+        merged_slots["intent"] = "buy"
+
     state["extracted_slots"] = merged_slots
     
     # Store last intent confidence
@@ -91,6 +144,10 @@ async def process_intent_and_slots(state: ConversationState) -> ConversationStat
     
     # Classify current node transition
     target_node = analysis.intent
+    
+    # Auto-advance node to QUALIFICATION if location or BHK is collected
+    if (merged_slots.get("location") or merged_slots.get("bhk")) and target_node in {"GREETING", "DISCOVERY"}:
+        target_node = "QUALIFICATION"
     
     # Open-domain fallback track
     valid_nodes = {"GREETING", "DISCOVERY", "QUALIFICATION", "LIVE_SEARCH", "OBJECTION_HANDLING", "SCHEDULING", "CLOSING"}
@@ -104,22 +161,66 @@ async def process_intent_and_slots(state: ConversationState) -> ConversationStat
     missing_critical = []
     if not slots.get("intent"):
         missing_critical.append("intent")
+    if not slots.get("location"):
+        missing_critical.append("location")
     if not slots.get("bhk"):
         missing_critical.append("bhk")
     if not slots.get("budget"):
         missing_critical.append("budget")
         
-    if target_node != "OPEN_DOMAIN" and is_low_signal(user_text) and missing_critical:
-        logger.info(f"Deepening strategy triggered. User gave low-signal input: '{user_text}'. Missing slots: {missing_critical}.")
-        # Keep user in discovery/qualification nodes to collect missing data
-        target_node = "QUALIFICATION" if slots.get("intent") else "DISCOVERY"
+    if is_hard_out(user_text):
+        target_node = "CLOSING"
+        state["_session_ended"] = True
 
-    # Strict Exit Fencing: Protect CLOSING unless requirements are met
+    if target_node != "OPEN_DOMAIN" and target_node != "CLOSING" and is_low_signal(user_text):
+        # Check if the immediately preceding assistant message was asking about site visit / callback
+        last_msg = ""
+        for m in reversed(state.get("messages", [])):
+            if isinstance(m, AIMessage):
+                last_msg = (m.content or "").lower()
+                break
+        
+        is_site_visit_prompt = any(w in last_msg for w in ["site visit", "visit", "weekend", "sunday", "वीकेंड", "विज़िट", "साइट", "देखने"])
+        if is_site_visit_prompt:
+            target_node = "SCHEDULING"
+        elif missing_critical:
+            logger.info(f"Deepening strategy triggered. User gave low-signal input: '{user_text}'. Missing slots: {missing_critical}.")
+            target_node = "QUALIFICATION" if slots.get("intent") else "DISCOVERY"
+
+    # Strict Exit Fencing: Protect CLOSING unless requirements are met OR user gave explicit hard out
     if target_node == "CLOSING" and missing_critical and not is_hard_out(user_text):
         logger.info("Exit fence triggered: user trying to exit, but critical slots are missing. Routing to QUALIFICATION.")
         target_node = "QUALIFICATION"
         
     state["current_node"] = target_node
+
+    # STEP 1 Telemetry Trace Logging
+    logger.info(
+        "\n========================================================\n"
+        "[END-TO-END TURN TRACE]\n"
+        "RAW TRANSCRIPT: \"%s\"\n"
+        "NORMALIZED TRANSCRIPT: \"%s\"\n"
+        "DETECTED LANGUAGE: %s\n"
+        "DETECTED INTENT: %s\n"
+        "EXTRACTED LOCATION/CITY: %s\n"
+        "PREVIOUS LOCATION/CITY: %s\n"
+        "UPDATED LOCATION/CITY: %s\n"
+        "CURRENT STATE: %s\n"
+        "MISSING SLOTS: %s\n"
+        "CURRENT NODE: %s\n"
+        "========================================================",
+        raw_user_text,
+        user_text,
+        state.get("language", "en"),
+        analysis.intent,
+        getattr(analysis.entities, "preferred_city", None) or getattr(analysis.entities, "location", None) or enriched_entities.get("preferred_city"),
+        prev_location,
+        slots.get("preferred_city") or slots.get("location"),
+        slots,
+        missing_critical,
+        target_node
+    )
+
     return state
 
 # Node Handlers
@@ -128,74 +229,58 @@ import re as _re
 import random as _random_greet
 
 def _build_opener_pool() -> list[str]:
-    """Build a pool of natural greeting variants from the loaded agent config."""
-    try:
-        config = load_agent_config()
-        global_prompt = config.get("conversationFlow", {}).get("global_prompt", "")
-        persona_match = _re.search(r"You are (\w+)", global_prompt)
-        persona_name = persona_match.group(1) if persona_match else "Priya"
-        company_match = _re.search(
-            r"from ([A-Z][A-Za-z\s]+(?:Apartments|Realty|Properties|Group|Homes|Projects|Real Estate))",
-            global_prompt,
-        )
-        company_name = company_match.group(1).strip() if company_match else "Suncity Apartments"
-        n, c = persona_name, company_name
-        return [
-            f"Hi, this is {n} from {c}. I'm calling about your recent property inquiry — just wanted to check if you're looking to buy or rent.",
-            f"Hello, {n} here from {c}. I'm reaching out to see if you're currently in the market for a property.",
-            f"Hi there, this is {n} from {c}. I'm following up on your property search to see what you're looking for.",
-            f"Good day, {n} here from {c}. I wanted to quickly touch base about your property requirement.",
-            f"Hi, this is {n} calling from {c}. Just checking in to see if you're looking to buy or rent at the moment.",
-            f"Hello, I'm {n} from {c}. I'm calling to help with your property search — are you looking to buy or invest?",
-        ]
-    except Exception:
-        return [
-            "Hi, this is Priya calling from Suncity Apartments. I'm following up on your recent property inquiry — just wanted to check if you're looking to buy or rent.",
-        ]
+    """Build a pool of natural greeting variants for Education Counsellor Aarohi."""
+    return [
+        "Hi, I'm Aarohi, your education counsellor. What are you currently studying or planning to study?",
+        "Hello, I'm Aarohi, your AI education counsellor. I can help you explore courses, colleges, entrance exams, and study abroad options.",
+        "Hi there, I'm Aarohi. What course or career path are you planning to pursue?",
+    ]
 
 _OPENER_POOL: list[str] = _build_opener_pool()
 
 def _get_cold_opener() -> str:
-    """Return a random opener from the pool so each session starts differently."""
-    return _random_greet.choice(_OPENER_POOL)
+    return _OPENER_POOL[0]
 
-# Keep _COLD_OPENER as a module-level alias for backward compatibility;
-# handle_greeting now calls _get_cold_opener() at runtime for variety.
 _COLD_OPENER = _OPENER_POOL[0]
 
 
 def _build_slot_context(slots: dict) -> str:
     """
-    Build a human-readable summary of what has already been collected.
-    This is injected into every LLM prompt so it knows what NOT to ask again.
+    Build a human-readable summary of student profile data already collected.
+    Injected into LLM prompts so it never asks for already known information.
     """
     known = []
     if slots.get("user_name"):
         known.append(f"name: {slots['user_name']}")
-    if slots.get("intent") or slots.get("intent_value"):
-        known.append(f"intent: {slots.get('intent') or slots.get('intent_value')}")
+    if slots.get("current_qualification"):
+        known.append(f"current qualification: {slots['current_qualification']}")
+    if slots.get("preferred_course"):
+        known.append(f"preferred course: {slots['preferred_course']}")
+    if slots.get("preferred_specialization"):
+        known.append(f"specialization: {slots['preferred_specialization']}")
+    if slots.get("preferred_city"):
+        known.append(f"preferred city: {slots['preferred_city']}")
+    if slots.get("preferred_country"):
+        known.append(f"preferred country: {slots['preferred_country']}")
+    if slots.get("study_abroad") is not None:
+        known.append(f"study abroad: {slots['study_abroad']}")
+    if slots.get("percentage"):
+        known.append(f"academic score: {slots['percentage']}")
     if slots.get("budget") or slots.get("budget_range"):
         known.append(f"budget: {slots.get('budget') or slots.get('budget_range')}")
-    if slots.get("bhk") or slots.get("preferred_bhk"):
-        known.append(f"BHK preference: {slots.get('bhk') or slots.get('preferred_bhk')}")
-    if slots.get("location"):
-        known.append(f"location: {slots['location']}")
-    if slots.get("timeline") or slots.get("timeline_weeks"):
-        known.append(f"timeline: {slots.get('timeline') or slots.get('timeline_weeks')}")
+    if slots.get("entrance_exam"):
+        known.append(f"entrance exam: {slots['entrance_exam']}")
+    if slots.get("career_goal"):
+        known.append(f"career goal: {slots['career_goal']}")
     if not known:
         return ""
-    return "Already known from this conversation: " + ", ".join(known) + ". DO NOT ask about any of these again."
+    return "Already known from this student's profile: " + ", ".join(known) + ". DO NOT ask for any of these again."
 
 
 def _needs_comment(user_input: str, slots: dict) -> tuple[bool, str]:
-    """
-    Decides whether the user's input warrants a comment before asking the next question.
-    Returns (should_comment: bool, reason: str) where reason describes what to comment on.
-    """
     text = (user_input or "").strip().lower()
     words = text.split()
 
-    # Short confirmations / single-word factual answers → go straight to question
     straight_to_question = {
         "yes", "yeah", "yep", "yup", "ok", "okay", "sure", "got it",
         "haan", "ho", "acha", "theek", "ji", "no", "nope", "nahi"
@@ -203,53 +288,53 @@ def _needs_comment(user_input: str, slots: dict) -> tuple[bool, str]:
     if text in straight_to_question or (len(words) == 1 and len(text) < 12):
         return False, ""
 
-    # Name introduced → warm acknowledgement (broad check: any multi-word input where name was captured)
     if slots.get("user_name"):
-        # Triggers if user just introduced themselves — covers "my name is X", "I'm X", "this is X"
         name_triggers = ["name", "i'm", "i am", "this is", "myself", "it's", "its", "calling"]
         if any(w in text for w in name_triggers) or len(words) >= 3:
-            return True, f"acknowledge their name ({slots['user_name']}) warmly — something like 'Nice to talk to you, {slots['user_name']}'"
+            return True, f"acknowledge their name ({slots['user_name']}) warmly"
 
-    # Budget given → comment on what it gets them
-    budget = slots.get("budget") or slots.get("budget_range")
-    if budget and any(w in text for w in ["lakh", "lacs", "crore", "lakhs", "budget", "cr", "k"]):
-        return True, f"comment briefly on what {budget} can get them in the current market"
+    if slots.get("current_qualification") or slots.get("preferred_course"):
+        q = slots.get("preferred_course") or slots.get("current_qualification")
+        return True, f"briefly acknowledge their interest in {q}"
 
-    # Intent with context → reflect on the decision
-    intent = slots.get("intent") or slots.get("intent_value")
-    if intent and any(w in text for w in ["buy", "invest", "rent", "own", "myself", "family", "use", "personal"]):
-        return True, f"briefly reflect on the {intent} decision — what it means for someone in their situation"
+    if slots.get("percentage"):
+        return True, f"acknowledge their score of {slots['percentage']}"
 
-    # BHK given with context → say something about the size
-    bhk = slots.get("bhk") or slots.get("preferred_bhk")
-    if bhk and len(words) > 1:
-        return True, f"say something real about a {bhk} — why it makes sense"
-
-    # Multi-word substantive answer (7+ words) → usually has context worth acknowledging
     if len(words) >= 7:
         return True, "briefly acknowledge what they shared before asking"
 
     return False, ""
 
 
-
 async def handle_greeting(state: ConversationState) -> ConversationState:
     messages = state.get("messages", [])
-
-    # Fire the cold opener if the agent has never spoken yet.
-    # We check for AIMessage presence (not list emptiness) because
-    # CALL_CONNECTED_TRIGGER is pre-appended as a HumanMessage before
-    # LangGraph is invoked, making `messages` non-empty on the very first turn.
     agent_has_spoken = any(isinstance(m, AIMessage) for m in messages)
 
     if not agent_has_spoken:
-        opener = _get_cold_opener()
+        lang = state.get("language") or "en"
+        domain = state.get("domain") or "real_estate"
+        from llm.language_utils import normalize_language_code
+        lang = normalize_language_code(lang)
+        if domain == "education":
+            if lang == "hi":
+                opener = "नमस्ते! मैं आरोही बोल रही हूँ, आपकी एजुकेशन काउंसलर। आप अभी क्या पढ़ाई कर रहे हैं या आगे क्या पढ़ना चाहते हैं?"
+            elif lang == "hinglish":
+                opener = "Hi! Main Aarohi baat kar rahi hoon, aapki education counsellor. Aap abhi kya padhai kar rahe hain ya aage kya padhna chahte hain?"
+            else:
+                opener = "Hi, I'm Aarohi, your education counsellor. What are you currently studying or planning to study?"
+        else:
+            if lang == "hi":
+                opener = "नमस्ते! मैं सनसिटी अपार्टमेंट्स से प्रिया बोल रही हूँ। क्या आप फ्लैट खरीदने या किराए पर लेने के लिए देख रहे हैं?"
+            elif lang == "hinglish":
+                opener = "Namaste! Main Suncity Apartments se Priya baat kar rahi hoon. Kya aap property khareedne ya rent par lene ke liye dekh rahe hain?"
+            else:
+                opener = "Hello! This is Priya from Suncity Apartments. I'm following up on your property search to see what you're looking for."
+
         state["messages"].append(AIMessage(content=opener))
         state["current_node"] = "DISCOVERY"
-        logger.info("[GREETING] Cold opener delivered: %s", opener)
+        logger.info("[GREETING] Cold opener delivered in lang '%s' domain '%s': %s", lang, domain, opener)
         return state
 
-    # Subsequent turns that route back here: treat as discovery with context
     logger.info("[GREETING] Re-routing to DISCOVERY — agent already greeted.")
     state["current_node"] = "DISCOVERY"
     return await handle_discovery(state)
@@ -262,6 +347,7 @@ async def handle_discovery(state: ConversationState) -> ConversationState:
     slot_context = _build_slot_context(slots)
     user_input = state.get("user_input", "")
     should_comment, comment_topic = _needs_comment(user_input, slots)
+    language = state.get("language", "en")
 
     history = []
     for msg in state["messages"]:
@@ -269,31 +355,31 @@ async def handle_discovery(state: ConversationState) -> ConversationState:
         history.append({"role": role, "content": msg.content})
 
     # Determine what the single next question should be
-    if not slots.get("intent") and not slots.get("intent_value"):
-        next_question_goal = "Ask whether they're looking to buy, rent, or invest."
-    elif not slots.get("location"):
-        next_question_goal = "Ask which city or area they're considering."
+    if not slots.get("current_qualification") and not slots.get("preferred_course"):
+        next_question_goal = "Ask what they are currently studying or what course they want to pursue."
+    elif not slots.get("preferred_city") and not slots.get("preferred_country") and slots.get("study_abroad") is None:
+        next_question_goal = "Ask if they prefer studying in India (which city) or studying abroad."
+    elif not slots.get("budget") and not slots.get("budget_range"):
+        next_question_goal = "Ask their approximate budget for the course."
     else:
-        next_question_goal = "Ask one question to find out what they need most right now."
+        next_question_goal = "Ask if they have an entrance exam score or academic percentage to consider."
 
     if should_comment:
         style_instruction = (
-            f"First, {comment_topic}. Keep it to one short sentence — genuine, not a compliment. "
+            f"First, {comment_topic}. Keep it to one short sentence. "
             f"Then ask: {next_question_goal}"
         )
     else:
         style_instruction = f"Go straight to the question: {next_question_goal}"
 
-    system_prompt = prompt
-
     discovery_instruction = (
         f"{slot_context}\n\n"
         f"{style_instruction}\n"
-        "ONE question only. 10-22 words total. Plain spoken English. No scripted phrases."
+        f"ONE question only. 10-22 words total. Plain spoken sentence in session language '{language}'. No bullet points."
     )
 
     response = await generate_voice_response(
-        f"{system_prompt}\n{discovery_instruction}", history, language="en"
+        f"{prompt}\n{discovery_instruction}", history, language=language, slots=slots
     )
     state["messages"].append(AIMessage(content=response))
     return state
@@ -304,33 +390,31 @@ async def handle_qualification(state: ConversationState) -> ConversationState:
     slots = state.get("extracted_slots", {})
     user_input = state.get("user_input", "")
     should_comment, comment_topic = _needs_comment(user_input, slots)
+    language = state.get("language", "en")
 
-    # Determine the single next missing slot
-    if not slots.get("intent") and not slots.get("intent_value"):
-        next_question = "Ask if they want to buy, rent, or invest."
-    elif not slots.get("bhk") and not slots.get("preferred_bhk"):
-        next_question = "Ask what size apartment they need — 2 BHK, 3 BHK, or something else."
+    if not slots.get("preferred_course"):
+        next_question = "Ask which bachelor's or master's course they want to pursue."
+    elif not slots.get("preferred_city") and not slots.get("preferred_country"):
+        next_question = "Ask which city or country location they prefer."
     elif not slots.get("budget") and not slots.get("budget_range"):
-        next_question = "Ask their budget range."
-    elif not slots.get("location"):
-        next_question = "Ask which city or area they're looking in."
+        next_question = "Ask their approximate budget range."
+    elif not slots.get("percentage"):
+        next_question = "Ask for their academic percentage or GPA."
     else:
-        next_question = "Ask when they're thinking of making the move — soon, or still exploring."
+        next_question = "Ask if they would like to be connected with an education counsellor for detailed profile evaluation."
 
     if should_comment:
         style_instruction = (
-            f"First, {comment_topic}. Keep it to one short, genuine sentence — not a compliment, something real. "
+            f"First, {comment_topic}. Keep it to one short genuine sentence. "
             f"Then ask: {next_question}"
         )
     else:
         style_instruction = f"Go straight to the question: {next_question}"
 
-    system_prompt = prompt
-
     qual_instruction = (
         f"{_build_slot_context(slots)}\n\n"
         f"{style_instruction}\n"
-        "CRITICAL: ONE question only. Do NOT repeat any already-answered question. 10-25 words total."
+        f"CRITICAL: ONE question only. Do NOT repeat any already-answered question. 10-25 words total in session language '{language}'."
     )
 
     history = []
@@ -339,7 +423,7 @@ async def handle_qualification(state: ConversationState) -> ConversationState:
         history.append({"role": role, "content": msg.content})
 
     response = await generate_voice_response(
-        f"{prompt}\n{qual_instruction}", history, language="en"
+        f"{prompt}\n{qual_instruction}", history, language=language, slots=slots
     )
     state["messages"].append(AIMessage(content=response))
     return state
@@ -353,7 +437,7 @@ async def handle_live_search(state: ConversationState, crawler: Any) -> Conversa
     
     # Step A: Latency-Masking Filler trigger
     if not state.get("rag_context"):
-        state["pending_filler_action"] = "Got it... let me pull up the live board for Suncity Apartments real quick..."
+        state["pending_filler_action"] = "Got it... let me check the course details real quick..."
         state["rag_context"] = "PENDING"
         # Return state immediately to let core voice loop stream the filler audio
         return state
@@ -370,7 +454,7 @@ async def handle_live_search(state: ConversationState, crawler: Any) -> Conversa
     prompt = config.get("conversationFlow", {}).get("global_prompt", "")
     
     instruction = (
-        "Answer the user's specific question about Suncity Apartments using only the provided context. "
+        "Answer the user's specific question about education courses and admissions using only the provided context. "
         "Keep it conversational, natural, and under 20 words. No bullet points."
     )
     
@@ -407,8 +491,8 @@ async def handle_objection_handling(state: ConversationState) -> ConversationSta
             f"{slot_context}\n\n"
             "The caller is questioning whether this is a legitimate company or a scam. "
             "Respond like a calm, unbothered professional — briefly and transparently. "
-            "Don't over-explain or sound defensive. Something like: 'We're Suncity Apartments — a registered developer. "
-            "Happy to share our RERA details if you'd like.' Then smoothly return to the conversation. "
+            "Don't over-explain or sound defensive. Something like: 'We're an AI Education Counselling platform helping students find suitable courses and colleges.' "
+            "Then smoothly return to the conversation. "
             "10-18 words only. No exclamation marks."
         )
     elif any(p in user_input for p in how_number_phrases):
@@ -494,24 +578,22 @@ async def handle_scheduling(state: ConversationState) -> ConversationState:
     return state
 
 async def handle_closing(state: ConversationState) -> ConversationState:
-    config = load_agent_config()
-    prompt = config.get("conversationFlow", {}).get("global_prompt", "")
-    language = state.get("language", "en")
+    lang = state.get("language") or "en"
+    from llm.language_utils import normalize_language_code
+    lang = normalize_language_code(lang)
 
-    instruction = (
-        "Wrap up the call as Priya from Suncity Apartments. Thank them warmly and genuinely — sound like you actually enjoyed chatting. "
-        "Wish them well and sign off naturally. Keep it under 15 words."
-    )
+    if lang == "hi":
+        response = "ज़रूर, आपका समय देने के लिए धन्यवाद। आपका दिन शुभ हो!"
+    elif lang == "hinglish":
+        response = "Thank you so much! Aapka din accha rahe, take care!"
+    elif lang == "mr":
+        response = "धन्यवाद! तुमचा दिवस चांगला जावो!"
+    else:
+        response = "Thank you for your time. Have a wonderful day ahead!"
 
-    history = []
-    for msg in state["messages"]:
-        role = "assistant" if isinstance(msg, AIMessage) else "user"
-        history.append({"role": role, "content": msg.content})
-
-    response = await generate_voice_response(
-        f"{prompt}\n{instruction}", history, language=language
-    )
     state["messages"].append(AIMessage(content=response))
+    state["current_node"] = "CLOSING"
+    state["_session_ended"] = True
     return state
 
 
@@ -2200,7 +2282,7 @@ class StateManager:
         }
         return template
 
-    def reset_state(self) -> None:
+    def reset_state(self, language: Optional[str] = None) -> None:
         self.current_node_id = self.start_node_id
         
         # Dynamic slot memory initialization
@@ -2224,7 +2306,13 @@ class StateManager:
         self._session_ended = False
         self._fallback_counts = {}
         self._whatsapp_sent = False
-        self.active_language = "en"
+        
+        lang = language or "en"
+        from llm.language_utils import normalize_language_code
+        lang = normalize_language_code(lang)
+        self.active_language = lang
+        self.conversation_data["language"] = lang
+        self.conversation_data["language_lock"] = lang
         
         # Dynamic asked flags
         self._asked_flags = {}

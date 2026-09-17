@@ -239,28 +239,72 @@ class UserTextAnalysis:
     unsupported_letters: int
 
 
+CONTROL_TOKEN_REGEX = re.compile(r"<\|[a-zA-Z0-9_\-]+\|>")
+
+
+def strip_stt_control_tokens(text: str) -> tuple[str, str | None]:
+    """
+    Strips STT/Whisper language and control tokens like <|hi|>, <|en|>, <|transcribe|>, <|hi|><|hi|>.
+    Returns (cleaned_text, detected_control_language_code).
+    """
+    if not text:
+        return "", None
+
+    found_langs = []
+    tokens = CONTROL_TOKEN_REGEX.findall(text)
+    for token in tokens:
+        tag = token.strip("<|>").lower()
+        if tag in {"hi", "hindi"}:
+            found_langs.append("hi")
+        elif tag in {"en", "english"}:
+            found_langs.append("en")
+        elif tag in {"mr", "marathi"}:
+            found_langs.append("mr")
+        elif tag in {"hinglish"}:
+            found_langs.append("hinglish")
+
+    cleaned = CONTROL_TOKEN_REGEX.sub("", text)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    detected_lang = found_langs[0] if found_langs else None
+    return cleaned, detected_lang
+
+
 def _detect_explicit_language_request(text: str) -> str | None:
     t = (text or "").lower()
     # Check English requests
-    if any(phrase in t for phrase in ["speak english", "talk in english", "continue in english", "english mein baat", "english me baat"]):
+    if any(phrase in t for phrase in ["speak english", "speak in english", "talk in english", "continue in english", "in english", "english please", "english mein baat", "english me baat"]):
         return "en"
     # Check Hindi requests
-    if any(phrase in t for phrase in ["speak hindi", "talk in hindi", "continue in hindi", "hindi mein baat", "hindi me baat", "hindi bol", "hindi me baat karo", "hindi mein baat karo"]):
+    if any(phrase in t for phrase in ["speak hindi", "speak in hindi", "talk in hindi", "continue in hindi", "in hindi", "hindi please", "hindi mein baat", "hindi me baat", "hindi bol", "hindi me baat karo", "hindi mein baat karo"]):
         return "hi"
     # Check Marathi requests
-    if any(phrase in t for phrase in ["speak marathi", "talk in marathi", "continue in marathi", "marathi mein baat", "marathi me baat", "marathi bol"]):
+    if any(phrase in t for phrase in ["speak marathi", "speak in marathi", "talk in marathi", "continue in marathi", "in marathi", "marathi please", "marathi mein baat", "marathi me baat", "marathi bol"]):
         return "mr"
     return None
 
 
+def normalize_language_code(lang_str: str | None) -> str:
+    """Normalize any user/dashboard/agent language string to canonical code ('en', 'hi', 'mr', 'hinglish')."""
+    if not lang_str:
+        return "en"
+    l = str(lang_str).strip().lower()
+    if l in {"hi", "hindi", "hin"}:
+        return "hi"
+    if l in {"mr", "marathi", "mar"}:
+        return "mr"
+    if l in {"hinglish", "hi-en", "hindi/english"}:
+        return "hinglish"
+    if l in {"en", "english", "eng"}:
+        return "en"
+    return "en"
+
+
 class LanguageTracker:
-    """Keep language switching stable across noisy turns."""
+    """Keep language switching stable across noisy turns. Hard Session Language Lock enforced."""
 
     def __init__(self, initial_language: str = "en"):
-        self.current_language = initial_language if initial_language in SUPPORTED_LANGUAGES else "en"
-        self._determined = False
+        self.current_language = normalize_language_code(initial_language)
         self._history: list[str] = []
-        self._cooldown_turns_left: int = 0
 
     def observe(self, text: str, allowed_languages: list[str] = None) -> tuple[str, UserTextAnalysis]:
         if allowed_languages is None:
@@ -268,106 +312,24 @@ class LanguageTracker:
 
         analysis = analyze_user_text(text, fallback=self.current_language)
         
-        # Log the required information
+        # Log transcript and detected language for diagnostic telemetry ONLY
         logger.info(
-            "\nRAW TRANSCRIPT: \"%s\"\n"
+            "\n[LANGUAGE DIAGNOSTICS]\n"
+            "RAW TRANSCRIPT: \"%s\"\n"
             "DETECTED LANGUAGE: %s\n"
             "CONFIDENCE: %.2f\n"
-            "SESSION LANGUAGE: %s",
+            "LOCKED SESSION LANGUAGE: %s",
             text,
             analysis.detected_language,
             analysis.confidence,
             self.current_language
         )
 
-        if not analysis.actionable:
-            return self.current_language, analysis
-
-        # STEP 1: Classify current turn language
-        label = analysis.detected_language
-        if label not in {"en", "hi", "hinglish", "mr"}:
-            label = "en"
-            
-        cleaned_text = re.sub(r"[^\w\s]", "", text.lower()).strip()
-        words = cleaned_text.split()
-        word_count = len(words)
-        
-        noise_fillers = {
-            "haan", "okay", "hmm", "yes", "ha", "theek", "uh", "achha", "right", "sure", "no", "yeah",
-            "yep", "nope", "ok", "hm", "mhm", "cool", "fine", "alright", "acha", "han", "kya", "why"
-        }
-        is_noise = (word_count > 0 and all(w in noise_fillers for w in words))
-        # Require higher confidence and longer utterances to avoid language-flipping on noise
-        is_uncertain = (analysis.confidence < 0.70 or word_count < 4)
-
-        if is_noise or is_uncertain:
-            logger.info("Label classified as Noise/Uncertain. Skipping state updates.")
-            return self.current_language, analysis
-            
-        if not self._determined:
-            # Require at least 10 words to determine session language initially.
-            # This prevents "haan okay sure" from permanently switching to Hindi/Hinglish.
-            if word_count < 10:
-                logger.info("Utterance too short (%d words) to set initial session language. Keeping default: %s", word_count, self.current_language)
-                return self.current_language, analysis
-                
-            if label in allowed_languages:
-                self.current_language = label
-                self._determined = True
-                self._history.clear()
-                self._cooldown_turns_left = 0
-                logger.info("Session language determined from first meaningful utterance: %s", self.current_language)
-            return self.current_language, analysis
-
-        # STEP 2: Switch Gate
-        self._history.append(label)
-        if len(self._history) > 3:
-            self._history.pop(0)
-            
-        switch_candidate = None
-        
-        # C. Explicit language change request bypasses everything
+        # Check ONLY explicit user spoken request (e.g. "speak in Hindi", "talk in English")
         explicit_req = _detect_explicit_language_request(text)
-        if explicit_req in {"en", "hi", "hinglish", "mr"}:
-            switch_candidate = explicit_req
-            logger.info("Switch candidate via explicit request: %s", switch_candidate)
-        else:
-            # A. Full sentence — lower threshold for mid-call switch to 4 words
-            if word_count >= 4 and label not in {"en", self.current_language}:
-                switch_candidate = label
-                logger.info("Switch candidate via mid-call short sentence: %s", switch_candidate)
-            # B. Three consecutive turns — raised from 2 to prevent noise-based flipping
-            elif (len(self._history) >= 3
-                  and self._history[-1] == self._history[-2] == self._history[-3]
-                  and self._history[-1] != self.current_language):
-                switch_candidate = self._history[-1]
-                logger.info("Switch candidate via 3 consecutive turns: %s", switch_candidate)
-
-        # Ensure switch candidate is allowed!
-        if switch_candidate and switch_candidate not in allowed_languages:
-            logger.info("Switch candidate %s blocked because it is not in allowed_languages: %s", switch_candidate, allowed_languages)
-            switch_candidate = None
-
-        # STEP 3: Anti Ping-Pong Cooldown
-        if explicit_req:
-            pass # bypass cooldown
-        elif switch_candidate:
-            if self._cooldown_turns_left > 0:
-                self._cooldown_turns_left -= 1
-                logger.info("Cooldown active (%d left). Switch candidate %s blocked.", self._cooldown_turns_left, switch_candidate)
-                switch_candidate = None
-        
-        if not switch_candidate and not explicit_req:
-            if self._cooldown_turns_left > 0:
-                self._cooldown_turns_left -= 1
-                logger.info("Cooldown decremented to %d", self._cooldown_turns_left)
-
-        # STEP 4: Apply Switch
-        if switch_candidate:
-            self.current_language = switch_candidate
-            self._cooldown_turns_left = 3
-            self._history.clear()
-            logger.info("Language switched to %s, cooldown reset to 3", self.current_language)
+        if explicit_req in allowed_languages and explicit_req != self.current_language:
+            self.current_language = explicit_req
+            logger.info("Session language changed via explicit spoken request to: %s", self.current_language)
 
         return self.current_language, analysis
 
@@ -495,22 +457,125 @@ def get_language_label(language: str) -> str:
 
 def get_language_instruction(language: str) -> str:
     """Return a concise generation directive for the active language."""
-    normalized = language if language in SUPPORTED_LANGUAGES else "en"
+    normalized = normalize_language_code(language)
     instructions = {
         "en": (
-            "Respond in clear, natural English. Start in English and stay there unless the user clearly and consistently uses another supported language."
+            "Current conversation language: English. Respond in clear, natural English. Maintain English throughout."
         ),
         "hi": (
-            "Respond in natural spoken Hindi using standard Devanagari script. Keep it professional, polite, clear, and human. Avoid textbook or overly formal Hindi."
+            "Current conversation language: Hindi.\n"
+            "Respond ONLY in natural spoken Hindi. Do NOT translate the user's message into English before responding.\n"
+            "Do NOT switch to English automatically even if the user uses English words or real-estate terms.\n"
+            "Maintain Hindi throughout the entire conversation unless explicitly requested."
         ),
         "mr": (
-            "Respond in conversational, respectful Marathi. Keep it natural, polished, and easy to follow."
+            "Current conversation language: Marathi. Respond in conversational, respectful Marathi. Keep it natural and polished."
         ),
         "hinglish": (
-            "Respond in natural Indian Hinglish. Mirror the user's style, keep real-estate terms in English when that sounds natural, and avoid stiff translations."
+            "Current conversation language: Hinglish.\n"
+            "Respond naturally in conversational Hinglish (Hindi grammar with English education terms like 'BCA', 'MCA', 'course', 'college', 'location').\n"
+            "Do NOT automatically convert the conversation to full English. Maintain Hinglish throughout."
         ),
     }
     return instructions[normalized]
+
+
+EDUCATION_VOCABULARY_MAP = {
+    r"\baarohi\b": "Aarohi",
+    r"\b(bca|b\.c\.a\.)\b": "BCA",
+    r"\b(mca|m\.c\.a\.)\b": "MCA",
+    r"\b(btech|b\.tech|b\.\s*tech|b\.\s*e\.|be)\b": "B.Tech",
+    r"\b(mtech|m\.tech|m\.\s*tech|m\.\s*e\.|me)\b": "M.Tech",
+    r"\b(mba|m\.b\.a\.)\b": "MBA",
+    r"\b(bcom|b\.com)\b": "B.Com",
+    r"\b(bsc|b\.sc)\b": "B.Sc",
+    r"\b(msc|m\.sc)\b": "M.Sc",
+    r"\b(mbbs|m\.b\.b\.s\.)\b": "MBBS",
+    r"\b(12th|12\s*th|hsc|intermediate|senior\s*secondary)\b": "12th",
+    r"\b(computer\s*science|cs)\b": "Computer Science",
+    r"\b(artificial\s*intelligence|ai)\b": "AI",
+    r"\b(machine\s*learning|ml)\b": "Machine Learning",
+    r"\b(data\s*science|data\s*analytics)\b": "Data Science",
+    r"\b(cyber\s*security|cybersecurity)\b": "Cyber Security",
+    r"\b(ielts|i\.e\.l\.t\.s\.)\b": "IELTS",
+    r"\b(toefl|t\.o\.e\.f\.l\.)\b": "TOEFL",
+    r"\b(gre)\b": "GRE",
+    r"\b(gmat)\b": "GMAT",
+    r"\b(study\s*abroad|abroad|foreign|foreign\s*country)\b": "study abroad",
+    r"\b(pune|pune\s*mein|pune\s*me|पुणे)\b": "Pune",
+    r"\b(jaipur|jaipur\s*mein|jaipur\s*me|जयपुर|जयपूर)\b": "Jaipur",
+    r"\b(jodhpur|jodhpur\s*mein|jodhpur\s*me|जोधपुर)\b": "Jodhpur",
+    r"\b(mumbai|mumbai\s*mein|mumbai\s*me|मुंबई)\b": "Mumbai",
+    r"\b(delhi|delhi\s*mein|delhi\s*me|दिल्ली)\b": "Delhi",
+    r"\b(bangalore|bengaluru|बेंगलुरु|बैंगलोर)\b": "Bangalore",
+    r"\b(usa|united\s*states|america)\b": "USA",
+    r"\b(uk|united\s*kingdom|england)\b": "UK",
+    r"\b(canada)\b": "Canada",
+    r"\b(germany)\b": "Germany",
+    r"\b(australia)\b": "Australia",
+}
+
+REAL_ESTATE_VOCABULARY_MAP = {
+    r"\b(suncity|sun\s*city)\b": "Suncity",
+    r"\b(1\s*bhk|1bhk|one\s*bhk)\b": "1 BHK",
+    r"\b(2\s*bhk|2bhk|two\s*bhk)\b": "2 BHK",
+    r"\b(3\s*bhk|3bhk|three\s*bhk)\b": "3 BHK",
+    r"\b(4\s*bhk|4bhk|four\s*bhk)\b": "4 BHK",
+    r"\b(wakad|wakad\s*mein|wakad\s*me|वाकड)\b": "Wakad",
+    r"\b(baner|baner\s*mein|baner\s*me|बानेर)\b": "Baner",
+    r"\b(hinjewadi|hinjawadi|हिंजवडी)\b": "Hinjewadi",
+    r"\b(mamurdi|मामुर्डी)\b": "Mamurdi",
+    r"\b(kharadi|खराडी)\b": "Kharadi",
+    r"\b(pune|pune\s*mein|pune\s*me|पुणे)\b": "Pune",
+    r"\b(jaipur|jaipur\s*mein|jaipur\s*me|जयपुर|जयपूर)\b": "Jaipur",
+    r"\b(jodhpur|jodhpur\s*mein|jodhpur\s*me|जोधपुर)\b": "Jodhpur",
+    r"\b(mumbai|mumbai\s*mein|mumbai\s*me|मुंबई)\b": "Mumbai",
+    r"\b(delhi|delhi\s*mein|delhi\s*me|दिल्ली)\b": "Delhi",
+}
+
+
+def normalize_domain_vocabulary(user_text: str, domain: str = "real_estate") -> str:
+    """Normalize domain-specific terms in user transcript based on active domain."""
+    if not user_text:
+        return ""
+    text = user_text
+    vocab_map = EDUCATION_VOCABULARY_MAP if domain == "education" else REAL_ESTATE_VOCABULARY_MAP
+    for pattern, replacement in vocab_map.items():
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    return text
+
+
+def validate_response_language(text: str, expected_lang: str) -> tuple[bool, str]:
+    """
+    Validates if the generated LLM text complies with expected conversation language.
+    Returns (is_valid: bool, reason: str).
+    """
+    if not text or not text.strip():
+        return True, "empty"
+    
+    norm_lang = normalize_language_code(expected_lang)
+    if norm_lang == "en":
+        return True, "english_expected"
+
+    has_devanagari = any('\u0900' <= ch <= '\u097f' for ch in text)
+    clean_lower = text.lower()
+    hindi_marker_hits = sum(1 for word in ["namaste", "aap", "chahiye", "hai", "hain", "hoon", "kar", "karte", "hum", "sab", "rahe", "ho", "ji", "samajh", "bataiye", "bol", "boliye", "bhej", "raha", "rahi"] if re.search(rf"\b{word}\b", clean_lower))
+
+    if norm_lang == "hi":
+        if has_devanagari or hindi_marker_hits >= 1:
+            return True, "valid_hindi"
+        words = [w for w in re.findall(r"\b[a-z]+\b", clean_lower) if w not in {"suncity", "apartments", "bhk", "jaipur", "jodhpur", "madurai", "wakad", "baner", "rera"}]
+        if len(words) >= 4 and hindi_marker_hits == 0 and not has_devanagari:
+            return False, "Expected Hindi, but generated response was in English."
+            
+    elif norm_lang == "hinglish":
+        if has_devanagari or hindi_marker_hits >= 1:
+            return True, "valid_hinglish"
+        words = [w for w in re.findall(r"\b[a-z]+\b", clean_lower) if w not in {"suncity", "apartments", "bhk", "jaipur", "jodhpur", "madurai", "wakad", "baner", "rera"}]
+        if len(words) >= 4 and hindi_marker_hits == 0:
+            return False, "Expected Hinglish, but generated response was in English."
+
+    return True, "valid"
 
 
 def localize_template(template: str, language: str) -> str:
@@ -535,3 +600,4 @@ def _count_markers(text: str, markers: tuple[str, ...]) -> int:
             if re.search(rf"\b{re.escape(marker)}\b", text):
                 count += 1
     return count
+

@@ -926,7 +926,7 @@ export default function AgentsPage() {
                       <button type="button" className="btn btn-outline-light btn-sm" onClick={() => openFlowPreview(agent)}>Flow</button>
                     )}
                     {SCRAPE_GENERATE_SCRIPT_ENABLED && user?.role === 'admin' && (
-                      <button type="button" className="btn btn-outline-light btn-sm" onClick={() => openScrapeModal(agent)}>Generate Script</button>
+                      <button type="button" className="btn btn-outline-light btn-sm" onClick={() => openScrapeModal(agent)}>Generate Summary</button>
                     )}
                     {user?.role === 'admin' && (
                       <>
@@ -973,7 +973,7 @@ export default function AgentsPage() {
                 <div className="d-flex align-items-center gap-3">
                   <div style={{ background: '#1E1E1E', border: '1px solid #3D3D3D', borderRadius: '10px', padding: '8px 10px', fontSize: '1.3rem' }}>🌐</div>
                   <div>
-                    <h5 className="modal-title fw-bold mb-0" style={{ color: '#FFFFFF', fontSize: '16px' }}>Generate Script from Website</h5>
+                    <h5 className="modal-title fw-bold mb-0" style={{ color: '#FFFFFF', fontSize: '16px' }}>Generate Summary from Website</h5>
                     <div style={{ fontSize: '12px', color: '#6B6B6B', marginTop: '2px' }}>Agent: {scrapeAgent.name || 'Voice Agent'}</div>
                   </div>
                 </div>

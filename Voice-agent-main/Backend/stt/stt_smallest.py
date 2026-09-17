@@ -118,6 +118,19 @@ def _build_wav_bytes(audio_chunk: bytes) -> bytes:
     return buffer.getvalue()
 
 
+_session: requests.Session | None = None
+
+
+def _get_session() -> requests.Session:
+    global _session
+    if _session is None:
+        _session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=20)
+        _session.mount("https://", adapter)
+        _session.mount("http://", adapter)
+    return _session
+
+
 def transcribe_audio(audio_chunk: bytes, language: str | None = None) -> str:
     """
     Transcribe a short audio chunk using Smallest AI Pulse Pro.
@@ -159,7 +172,8 @@ def transcribe_audio(audio_chunk: bytes, language: str | None = None) -> str:
 
     t0 = time.perf_counter()
     try:
-        response = requests.post(
+        session = _get_session()
+        response = session.post(
             SMALLEST_STT_ENDPOINT,
             params=params,
             headers=headers,

@@ -160,7 +160,7 @@ def transcribe_audio(audio_chunk: bytes, language: str | None = None) -> str:
         params["detect_language"] = "true"
     else:
         params["language"] = active_lang
-    timeout_s = float(os.getenv("DEEPGRAM_TIMEOUT_SECONDS", "3.0"))
+    timeout_s = float(os.getenv("DEEPGRAM_TIMEOUT_SECONDS", "0.8"))
 
     started_at = time.perf_counter()
     try:

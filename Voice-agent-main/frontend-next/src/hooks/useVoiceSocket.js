@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 
-export function useVoiceSocket(agentId, activeClient) {
+export function useVoiceSocket(agentId, activeClient, defaultLanguage = 'en') {
   const [isConnected, setIsConnected] = useState(false);
   const [statusText, setStatusText] = useState('Idle');
   const [transcripts, setTranscripts] = useState([]);
@@ -154,7 +154,7 @@ export function useVoiceSocket(agentId, activeClient) {
     setStatusText('Session ended');
   }, [cleanupMediaAndAudio]);
 
-  const connect = useCallback(async (isDemo = false, leadName = 'Demo User', isReconnect = false) => {
+  const connect = useCallback(async (isDemo = false, leadName = 'Demo User', isReconnect = false, language = defaultLanguage) => {
     if (!isReconnect) disconnect();
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -185,9 +185,10 @@ export function useVoiceSocket(agentId, activeClient) {
 
       const clientId = encodeURIComponent(activeClient);
       const encodedLead = encodeURIComponent(leadName);
+      const langParam = encodeURIComponent(language || defaultLanguage || 'en');
       const endpoint = isDemo 
-        ? `api/voice-demo?agentId=${encodeURIComponent(agentId)}&clientId=${clientId}&leadName=${encodedLead}`
-        : `api/voice-live?agentId=${encodeURIComponent(agentId)}&leadName=${encodedLead}`;
+        ? `api/voice-demo?agentId=${encodeURIComponent(agentId)}&clientId=${clientId}&leadName=${encodedLead}&language=${langParam}`
+        : `api/voice-live?agentId=${encodeURIComponent(agentId)}&leadName=${encodedLead}&language=${langParam}`;
 
       // Build WebSocket URL from the backend API URL.
       // In production, NEXT_PUBLIC_API_URL should be set to the Railway backend URL
@@ -417,8 +418,8 @@ export function useVoiceSocket(agentId, activeClient) {
         src.connect(activeGainNodeRef.current);
         
         const ctxNow = liveCtx.currentTime;
-        // Increase lead time to 80ms minimum to prevent breaking/pops
-        const adaptiveLead = Math.min(0.5, Math.max(0.08, (emaJitterRef.current / 1000) * 3.0));
+        // Fast lead time (30ms min) for instant speech playback without buffering delay
+        const adaptiveLead = Math.min(0.2, Math.max(0.03, (emaJitterRef.current / 1000) * 1.5));
         
         if (nextStartTimeRef.current < ctxNow) {
           nextStartTimeRef.current = ctxNow + adaptiveLead;
@@ -452,7 +453,7 @@ export function useVoiceSocket(agentId, activeClient) {
       setStatusText('Mic access denied or server unreachable.');
       disconnect();
     }
-  }, [agentId, activeClient, cleanupMediaAndAudio, disconnect, holdMicInput, isMicInputBlocked, logMicChunkStats, scheduleMicResume, toPcm16Buffer]);
+  }, [agentId, activeClient, cleanupMediaAndAudio, disconnect, holdMicInput, isMicInputBlocked, logMicChunkStats, scheduleMicResume, toPcm16Buffer, defaultLanguage]);
 
   const clearTranscripts = () => setTranscripts([]);
 

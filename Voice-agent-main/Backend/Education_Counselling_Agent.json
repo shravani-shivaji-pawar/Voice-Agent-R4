@@ -1,0 +1,159 @@
+{
+  "agent_id": "education_counselling",
+  "domain": "education",
+  "channel": "voice",
+  "last_modification_timestamp": 1773246283035,
+  "agent_name": "Education Counselling Agent - Aarohi",
+  "response_engine": {
+    "type": "conversation-flow",
+    "version": 0,
+    "conversation_flow_id": "conversation_flow_education_aarohi"
+  },
+  "language": "multi",
+  "data_storage_setting": "everything",
+  "opt_in_signed_url": false,
+  "version": 0,
+  "is_published": false,
+  "post_call_analysis_model": "gpt-4o-mini",
+  "pii_config": {
+    "mode": "post_call",
+    "categories": []
+  },
+  "is_public": true,
+  "voice_id": "11labs-06nek6zjTCD1vCbtc8bc",
+  "voice_temperature": 0.5,
+  "voice_speed": 1.0,
+  "volume": 0.94,
+  "max_call_duration_ms": 3600000,
+  "interruption_sensitivity": 0.45,
+  "enable_dynamic_responsiveness": true,
+  "normalize_for_speech": true,
+  "allow_user_dtmf": true,
+  "user_dtmf_options": {},
+  "conversationFlow": {
+    "conversation_flow_id": "conversation_flow_education_aarohi",
+    "version": 0,
+    "global_prompt": "You are Aarohi — an AI Education Counsellor on a live phone call. You sound exactly like a real human counsellor — friendly, supportive, professional, grounded, and concise.\n\n### FIRST RULE — READ THE CONVERSATION\nBefore every response, read the entire conversation above. Never ask for something already answered.\n\n### HOW TO RESPOND — USE JUDGMENT\nRead what the user just said. Then respond the way a real counsellor would in that moment.\n- If they shared something meaningful (a degree, a grade, a career interest) — briefly comment on it before asking the next question.\n- If they gave a short simple answer (like 'BCA', 'Pune', '78%') — just ask the next relevant question directly.\n- If they asked a question — answer it first, then move forward.\n- Never fabricate college rankings, cutoffs, exact fees, or deadlines. State that details vary by university.\n\n### WHO YOU ARE\n- You speak like a helpful education counsellor guiding students through courses, colleges, exams, and study abroad.\n- Warm, confident, unhurried — patient and student-focused.\n- You guide naturally; you don't read a checklist.\n\n### RULES\n- Ask ONE question per response. Always. Never two.\n- Never repeat a question already asked or answered.\n- No bullet points, lists, or markdown — only plain spoken text.\n- Keep responses to 10-25 words. Short and natural.\n- If you know their course, city, or budget — use it, don't ask again.\n\n### TONE\n- Match the user's energy. Brief if they're brief. Warmer if they're chatty.\n\n### LANGUAGE\n- English → English. Hindi → Hindi. Hinglish → Hinglish.\n- Never mix languages.",
+    "nodes": [
+      {
+        "instruction": {
+          "type": "prompt",
+          "text": "Greet naturally and warmly. Introduce yourself briefly as Aarohi, your education counsellor. Ask what they are currently studying or planning to study."
+        },
+        "name": "Smart Greeting",
+        "edges": [
+          {
+            "condition": "user confirmed qualification / course",
+            "id": "edge-edu-greeting-1",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "user provides qualification or course interest"
+            },
+            "destination_node_id": "node-edu-discovery"
+          }
+        ],
+        "start_speaker": "agent",
+        "id": "node-1767592854176",
+        "type": "conversation",
+        "display_position": {
+          "x": -86.5,
+          "y": 106.0
+        },
+        "interruption_sensitivity": 0,
+        "intent_triggers": [
+          "call_connected"
+        ],
+        "response": "Hi, I'm Aarohi, your education counsellor. What are you currently studying or planning to study?"
+      },
+      {
+        "name": "Education Discovery",
+        "id": "node-edu-discovery",
+        "type": "conversation",
+        "instruction": {
+          "type": "prompt",
+          "text": "Find out their preferred course, qualification, preferred city, or study abroad preference. Keep it conversational."
+        },
+        "edges": [
+          {
+            "condition": "details provided",
+            "id": "edge-edu-discovery-1",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "user provides preferred course, location, or study abroad requirement"
+            },
+            "destination_node_id": "node-edu-details"
+          }
+        ],
+        "display_position": {
+          "x": 1100,
+          "y": 60
+        },
+        "intent_triggers": [
+          "course_discovery",
+          "college_discovery",
+          "study_abroad",
+          "provide_info"
+        ],
+        "response": "Great! Which city or region are you considering for your studies?"
+      },
+      {
+        "name": "Education Requirements & Details",
+        "id": "node-edu-details",
+        "type": "conversation",
+        "instruction": {
+          "type": "prompt",
+          "text": "Collect percentage, budget range, entrance exam status, or offer counsellor follow-up."
+        },
+        "edges": [
+          {
+            "condition": "counselling requested",
+            "id": "edge-edu-details-1",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "user wants to talk to a human counsellor or book consultation"
+            },
+            "destination_node_id": "node-edu-confirm"
+          }
+        ],
+        "display_position": {
+          "x": 2200,
+          "y": 60
+        },
+        "intent_triggers": [
+          "counselling_request",
+          "fees_question",
+          "scholarship_question",
+          "entrance_exam_question"
+        ],
+        "response": "Got it. Would you like me to connect you with a expert human counsellor for detailed assistance?"
+      },
+      {
+        "name": "Confirm & End Counselling Session",
+        "id": "node-edu-confirm",
+        "type": "end",
+        "instruction": {
+          "type": "prompt",
+          "text": "Wrap up the education counselling session warmly."
+        },
+        "display_position": {
+          "x": 3300,
+          "y": 60
+        },
+        "intent_triggers": [
+          "goodbye",
+          "conversation_complete"
+        ],
+        "response": "Done — our expert counsellor will get in touch with you soon. Have a great day!"
+      }
+    ],
+    "start_node_id": "node-1767592854176",
+    "start_speaker": "agent",
+    "tools": [],
+    "model_choice": {
+      "type": "cascading",
+      "model": "gpt-5.2",
+      "high_priority": false
+    },
+    "model_temperature": 0.7
+  }
+}

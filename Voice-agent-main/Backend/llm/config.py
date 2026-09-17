@@ -22,25 +22,25 @@ GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 # Active default models (fastest, low-latency for voice turns):
 #   "groq/compound-mini"     - Groq's active fast mini model
 #   "gpt-4o-mini"            - OpenAI's smallest fast model (when OPENAI_API_KEY is active)
-MODEL_NAME: str = os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
-FAST_MODEL_NAME: str = os.getenv("LLM_FAST_MODEL", "openai/gpt-oss-120b")
-VERSATILE_MODEL_NAME: str = os.getenv("LLM_VERSATILE_MODEL", "openai/gpt-oss-120b")
+MODEL_NAME: str = os.getenv("LLM_MODEL", "llama-3.1-8b-instant")
+FAST_MODEL_NAME: str = os.getenv("LLM_FAST_MODEL", "llama-3.1-8b-instant")
+VERSATILE_MODEL_NAME: str = os.getenv("LLM_VERSATILE_MODEL", "llama-3.1-8b-instant")
 
 # ── Generation Parameters ──────────────────────────────────────────────────────
 TEMPERATURE: float = 0.35      # balanced: not robotic (0.0) but not hallucinating (>0.7)
-MAX_TOKENS: int = 400           # enough for complete reasoning + voice response content
+MAX_TOKENS: int = 100           # tight token budget for spoken voice responses (<25 words)
 TOP_P: float = 0.9             # slight nucleus cap for consistency
 
 # ── Retry & Timeout ────────────────────────────────────────────────────────────
-REQUEST_TIMEOUT_S: int = 6     # tighter: 8→6s to fail fast and not block the pipeline
+REQUEST_TIMEOUT_S: int = 4     # 4s timeout to fail fast and not block the pipeline
 MAX_RETRIES: int = 2           # Number of retries on transient failure
 
 # Runtime response shaping
 MAX_HISTORY_MESSAGES: int = 10  # trimmed from 12 for faster context processing
 MAX_RESPONSE_SENTENCES: int = 2
-MAX_RESPONSE_WORDS: int = 30
+MAX_RESPONSE_WORDS: int = 25
 
-ENABLE_SINGLE_CALL_FAST_PATH: bool = True
+ENABLE_SINGLE_CALL_FAST_PATH: bool = False
 
 # Phrase-constrained LLM response composition
 PHRASE_RESPONSE_MAX_TOKENS: int = 120

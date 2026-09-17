@@ -106,7 +106,7 @@ def _bytes_to_pcm16(audio_bytes: bytes) -> np.ndarray:
     return np.frombuffer(audio_bytes, dtype=np.int16)
 
 
-def transcribe_audio(audio_chunk: bytes, language: str | None = None) -> str:
+def transcribe_audio(audio_chunk: bytes, language: str | None = None, domain: str = "real_estate") -> str:
     """Transcribe a short audio chunk to text using Groq Cloud STT.
 
     Accepts raw audio bytes (16 kHz, mono) and routes it to `whisper-large-v3-turbo`.
@@ -142,6 +142,11 @@ def transcribe_audio(audio_chunk: bytes, language: str | None = None) -> str:
     
     buffer.name = "chunk.wav"  # Required by API for MIME type extraction
 
+    if domain == "education":
+        stt_prompt = "Aarohi, Education Counselling, BCA, MCA, B.Tech, MBA, Pune, Jaipur, admission, fees, course, study abroad."
+    else:
+        stt_prompt = "Neha, Real Estate, Wakad, Baner, Hinjewadi, Pune, BHK, site visit, budget, 1 BHK, 2 BHK, 3 BHK, Suncity."
+
     MAX_RETRIES = 3
     for attempt in range(MAX_RETRIES):
         try:
@@ -152,7 +157,7 @@ def transcribe_audio(audio_chunk: bytes, language: str | None = None) -> str:
                 "file": (buffer.name, buffer.read()),
                 "model": "whisper-large-v3-turbo",
                 "response_format": "json",
-                "prompt": "Real estate properties in Pune, Wakad, Hinjewadi, Baner, Kharadi. Buy, rent, invest, budget, 1 BHK, 2 BHK, 3 BHK, 4 BHK, lakhs, crores. Yes, I want property, budget 50 lakh, 1 crore."
+                "prompt": stt_prompt
             }
             
             # Lock language ONLY if strictly set in config or passed from turn_state,
