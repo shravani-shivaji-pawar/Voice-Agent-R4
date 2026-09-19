@@ -264,16 +264,20 @@ def route_next_node(state: ConversationState) -> str:
     """
     curr = state.get("current_node", "GREETING")
     slots = state.get("extracted_slots", {})
+    domain = state.get("domain", "real_estate")
     
-    # Strict Exit Fencing: Cannot go to CLOSING unless slots are collected
+    # Strict Exit Fencing: Cannot go to CLOSING unless slots are collected or hard out given
     if curr == "CLOSING":
-        has_critical_slots = (
-            slots.get("intent") and 
-            slots.get("budget") and 
-            slots.get("bhk")
-        )
-        if not has_critical_slots:
-            logger.info("Fencing CLOSING node: missing critical slots. Re-routing to QUALIFICATION.")
+        if domain == "education":
+            has_critical_slots = bool(slots.get("preferred_course") or slots.get("current_qualification"))
+        else:
+            has_critical_slots = bool(
+                slots.get("intent") and 
+                slots.get("budget") and 
+                slots.get("bhk")
+            )
+        if not has_critical_slots and not state.get("_session_ended"):
+            logger.info("Fencing CLOSING node: missing critical slots for domain '%s'. Re-routing to QUALIFICATION.", domain)
             return "QUALIFICATION"
         return "CLOSING"
         

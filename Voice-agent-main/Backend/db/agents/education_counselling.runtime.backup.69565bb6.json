@@ -1,0 +1,270 @@
+{
+  "agent_id": "education_counselling",
+  "domain": "education",
+  "channel": "voice",
+  "last_modification_timestamp": 1773246283035,
+  "agent_name": "Aarohi \u2014 Education Counselling Specialist",
+  "response_engine": {
+    "type": "conversation-flow",
+    "version": 0,
+    "conversation_flow_id": "conversation_flow_education_aarohi"
+  },
+  "language": "multi",
+  "data_storage_setting": "everything",
+  "opt_in_signed_url": false,
+  "version": 0,
+  "is_published": false,
+  "post_call_analysis_model": "gpt-4o-mini",
+  "pii_config": {
+    "mode": "post_call",
+    "categories": []
+  },
+  "is_public": true,
+  "voice_id": "siya",
+  "voice_temperature": 0.5,
+  "voice_speed": 1.0,
+  "volume": 0.94,
+  "max_call_duration_ms": 3600000,
+  "interruption_sensitivity": 0.45,
+  "enable_dynamic_responsiveness": true,
+  "normalize_for_speech": true,
+  "allow_user_dtmf": true,
+  "user_dtmf_options": {},
+  "conversationFlow": {
+    "conversation_flow_id": "flowv2_5c97a81c9112",
+    "version": 2,
+    "schema_version": "2.0",
+    "global_prompt": "You are Aarohi, an AI Education Counsellor guiding students on courses, colleges, entrance exams, and study abroad options.",
+    "start_node_id": "start",
+    "nodes": [
+      {
+        "id": "root_greeting",
+        "name": "Initial Greeting",
+        "type": "conversation",
+        "intent_triggers": [
+          "call_connected"
+        ],
+        "edges": [
+          {
+            "id": "to_discovery",
+            "condition": "user responds",
+            "destination_node_id": "discovery"
+          }
+        ],
+        "instruction": {
+          "type": "prompt",
+          "text": "Greet the user warmly as Aarohi \u2014 Education Counselling Specialist and confirm identity using the lead name."
+        },
+        "response": "Hello, this is Aarohi \u2014 Education Counselling Specialist from the Education counselling team. Am I speaking with {{name}}?"
+      },
+      {
+        "id": "start",
+        "name": "Greeting",
+        "type": "conversation",
+        "instruction": {
+          "type": "prompt",
+          "text": "Follow the published Flow V2 node 'Greeting' and keep the reply concise."
+        },
+        "response": "Hello, this is Aarohi \u2014 Education Counselling Specialist. Am I speaking with {{name}}?",
+        "edges": [
+          {
+            "id": "edge_start_1_discovery",
+            "condition": "confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "confirm"
+            },
+            "destination_node_id": "discovery"
+          },
+          {
+            "id": "edge_start_2_end",
+            "condition": "deny",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "deny"
+            },
+            "destination_node_id": "end"
+          },
+          {
+            "id": "edge_start_3_fallback",
+            "condition": "unclear",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "unclear"
+            },
+            "destination_node_id": "fallback"
+          }
+        ],
+        "start_speaker": "agent",
+        "intent_triggers": [
+          "call_connected"
+        ]
+      },
+      {
+        "id": "discovery",
+        "name": "Discovery",
+        "type": "conversation",
+        "instruction": {
+          "type": "prompt",
+          "text": "Follow the published Flow V2 node 'Discovery' and keep the reply concise."
+        },
+        "response": "Could you share a little about what you are looking for?",
+        "edges": [
+          {
+            "id": "edge_discovery_1_confirm_followup",
+            "condition": "provide info",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "provide info"
+            },
+            "destination_node_id": "confirm_followup"
+          },
+          {
+            "id": "edge_discovery_2_confirm_followup",
+            "condition": "confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "confirm"
+            },
+            "destination_node_id": "confirm_followup"
+          },
+          {
+            "id": "edge_discovery_3_fallback",
+            "condition": "unclear",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "unclear"
+            },
+            "destination_node_id": "fallback"
+          }
+        ],
+        "intent_triggers": [
+          "confirm",
+          "provide_info"
+        ],
+        "collects": []
+      },
+      {
+        "id": "fallback",
+        "name": "Clarify",
+        "type": "fallback",
+        "instruction": {
+          "type": "prompt",
+          "text": "Follow the published Flow V2 node 'Clarify' and keep the reply concise."
+        },
+        "response": "Sorry, I did not catch that clearly. Could you repeat it once?",
+        "edges": [
+          {
+            "id": "edge_fallback_1_discovery",
+            "condition": "provide info",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "provide info"
+            },
+            "destination_node_id": "discovery"
+          },
+          {
+            "id": "edge_fallback_2_discovery",
+            "condition": "confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "confirm"
+            },
+            "destination_node_id": "discovery"
+          },
+          {
+            "id": "edge_fallback_3_end",
+            "condition": "deny",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "deny"
+            },
+            "destination_node_id": "end"
+          }
+        ],
+        "intent_triggers": [
+          "unclear"
+        ],
+        "fallback": {
+          "max_attempts": 2,
+          "escalation_target": "end"
+        }
+      },
+      {
+        "id": "confirm_followup",
+        "name": "Confirm Follow-up",
+        "type": "conversation",
+        "instruction": {
+          "type": "prompt",
+          "text": "Follow the published Flow V2 node 'Confirm Follow-up' and keep the reply concise."
+        },
+        "response": "Thanks. I will have the team follow up with the right details.",
+        "edges": [
+          {
+            "id": "edge_confirm_followup_1_end",
+            "condition": "confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "confirm"
+            },
+            "destination_node_id": "end"
+          },
+          {
+            "id": "edge_confirm_followup_2_end",
+            "condition": "deny",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "deny"
+            },
+            "destination_node_id": "end"
+          },
+          {
+            "id": "edge_confirm_followup_3_fallback",
+            "condition": "unclear",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "unclear"
+            },
+            "destination_node_id": "fallback"
+          }
+        ],
+        "intent_triggers": [
+          "confirm",
+          "provide_info"
+        ]
+      },
+      {
+        "id": "end",
+        "name": "End",
+        "type": "end",
+        "instruction": {
+          "type": "prompt",
+          "text": "Follow the published Flow V2 node 'End' and keep the reply concise."
+        },
+        "response": "Thank you. Have a good day.",
+        "edges": [],
+        "intent_triggers": [
+          "confirm",
+          "deny"
+        ]
+      }
+    ]
+  },
+  "global_prompt": "You are Aarohi, an AI Education Counsellor guiding students on courses, colleges, entrance exams, and study abroad options.",
+  "tts_provider": "smallest",
+  "stt_provider": "smallest",
+  "smallest_model": "lightning_v3.1",
+  "provider_config": {
+    "stt_provider": "smallest",
+    "tts_provider": "smallest",
+    "cartesia_voice_id": "95d51f79-c397-46f9-b49a-23763d3eaa2d",
+    "smallest_model": "lightning_v3.1",
+    "parler_description": ""
+  },
+  "agent_metadata": {
+    "agent_type": "education",
+    "assigned_email": "shravanipawar7704@gmail.com",
+    "client_id": "user-8533b6ecdda1"
+  },
+  "conversation_flow_id": "flowv2_5c97a81c9112"
+}

@@ -14,12 +14,14 @@ logger = logging.getLogger("llm.state_manager")
 
 CONFIG_PATH = Path(__file__).parent.parent / "Updated_Real_Estate_Agent.json"
 
-def load_agent_config() -> Dict[str, Any]:
+def load_agent_config(domain: str = "real_estate") -> Dict[str, Any]:
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        filename = "Education_Counselling_Agent.json" if domain == "education" else "Updated_Real_Estate_Agent.json"
+        config_path = Path(__file__).parent.parent / filename
+        with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        logger.error(f"Failed to load agent config: {e}")
+        logger.error(f"Failed to load agent config for domain '{domain}': {e}")
         return {}
 
 def is_low_signal(text: str) -> bool:
@@ -341,7 +343,8 @@ async def handle_greeting(state: ConversationState) -> ConversationState:
 
 
 async def handle_discovery(state: ConversationState) -> ConversationState:
-    config = load_agent_config()
+    domain = state.get("domain") or "real_estate"
+    config = load_agent_config(domain)
     prompt = config.get("conversationFlow", {}).get("global_prompt", "")
     slots = state.get("extracted_slots", {})
     slot_context = _build_slot_context(slots)
@@ -354,15 +357,24 @@ async def handle_discovery(state: ConversationState) -> ConversationState:
         role = "assistant" if isinstance(msg, AIMessage) else "user"
         history.append({"role": role, "content": msg.content})
 
-    # Determine what the single next question should be
-    if not slots.get("current_qualification") and not slots.get("preferred_course"):
-        next_question_goal = "Ask what they are currently studying or what course they want to pursue."
-    elif not slots.get("preferred_city") and not slots.get("preferred_country") and slots.get("study_abroad") is None:
-        next_question_goal = "Ask if they prefer studying in India (which city) or studying abroad."
-    elif not slots.get("budget") and not slots.get("budget_range"):
-        next_question_goal = "Ask their approximate budget for the course."
+    if domain == "education":
+        if not slots.get("current_qualification") and not slots.get("preferred_course"):
+            next_question_goal = "Ask what they are currently studying or what course they want to pursue."
+        elif not slots.get("preferred_city") and not slots.get("preferred_country") and slots.get("study_abroad") is None:
+            next_question_goal = "Ask if they prefer studying in India (which city) or studying abroad."
+        elif not slots.get("budget") and not slots.get("budget_range"):
+            next_question_goal = "Ask their approximate budget for the course."
+        else:
+            next_question_goal = "Ask if they have an entrance exam score or academic percentage to consider."
     else:
-        next_question_goal = "Ask if they have an entrance exam score or academic percentage to consider."
+        if not slots.get("location"):
+            next_question_goal = "Ask which city or area they are looking to buy or rent in."
+        elif not slots.get("bhk") and not slots.get("preferred_bhk"):
+            next_question_goal = "Ask what apartment size (e.g. 2 BHK or 3 BHK) they prefer."
+        elif not slots.get("budget") and not slots.get("budget_range"):
+            next_question_goal = "Ask for their approximate budget range."
+        else:
+            next_question_goal = "Ask if they would like to schedule a site visit."
 
     if should_comment:
         style_instruction = (
@@ -379,29 +391,40 @@ async def handle_discovery(state: ConversationState) -> ConversationState:
     )
 
     response = await generate_voice_response(
-        f"{prompt}\n{discovery_instruction}", history, language=language, slots=slots
+        f"{prompt}\n{discovery_instruction}", history, language=language, slots=slots, domain=domain
     )
     state["messages"].append(AIMessage(content=response))
     return state
 
 async def handle_qualification(state: ConversationState) -> ConversationState:
-    config = load_agent_config()
+    domain = state.get("domain") or "real_estate"
+    config = load_agent_config(domain)
     prompt = config.get("conversationFlow", {}).get("global_prompt", "")
     slots = state.get("extracted_slots", {})
     user_input = state.get("user_input", "")
     should_comment, comment_topic = _needs_comment(user_input, slots)
     language = state.get("language", "en")
 
-    if not slots.get("preferred_course"):
-        next_question = "Ask which bachelor's or master's course they want to pursue."
-    elif not slots.get("preferred_city") and not slots.get("preferred_country"):
-        next_question = "Ask which city or country location they prefer."
-    elif not slots.get("budget") and not slots.get("budget_range"):
-        next_question = "Ask their approximate budget range."
-    elif not slots.get("percentage"):
-        next_question = "Ask for their academic percentage or GPA."
+    if domain == "education":
+        if not slots.get("preferred_course"):
+            next_question = "Ask which bachelor's or master's course they want to pursue."
+        elif not slots.get("preferred_city") and not slots.get("preferred_country"):
+            next_question = "Ask which city or country location they prefer."
+        elif not slots.get("budget") and not slots.get("budget_range"):
+            next_question = "Ask their approximate budget range."
+        elif not slots.get("percentage"):
+            next_question = "Ask for their academic percentage or GPA."
+        else:
+            next_question = "Ask if they would like to be connected with an education counsellor for detailed profile evaluation."
     else:
-        next_question = "Ask if they would like to be connected with an education counsellor for detailed profile evaluation."
+        if not slots.get("location"):
+            next_question = "Ask which location or city they prefer for property search."
+        elif not slots.get("bhk") and not slots.get("preferred_bhk"):
+            next_question = "Ask whether they prefer a 2 BHK or 3 BHK apartment."
+        elif not slots.get("budget") and not slots.get("budget_range"):
+            next_question = "Ask what budget range they are working with."
+        else:
+            next_question = "Ask if they would be free this weekend for a site visit."
 
     if should_comment:
         style_instruction = (
@@ -423,38 +446,32 @@ async def handle_qualification(state: ConversationState) -> ConversationState:
         history.append({"role": role, "content": msg.content})
 
     response = await generate_voice_response(
-        f"{prompt}\n{qual_instruction}", history, language=language, slots=slots
+        f"{prompt}\n{qual_instruction}", history, language=language, slots=slots, domain=domain
     )
     state["messages"].append(AIMessage(content=response))
     return state
 
 async def handle_live_search(state: ConversationState, crawler: Any) -> ConversationState:
-    """
-    Step A: Stream verbal filler statement immediately if no rag_context exists.
-    Step B: Fetch live website parsed chunks and generate final answer.
-    """
+    domain = state.get("domain") or "real_estate"
     user_query = state.get("user_input", "")
     
-    # Step A: Latency-Masking Filler trigger
     if not state.get("rag_context"):
-        state["pending_filler_action"] = "Got it... let me check the course details real quick..."
+        state["pending_filler_action"] = "Got it... let me check the details real quick..." if domain == "education" else "Got it... let me check the property details real quick..."
         state["rag_context"] = "PENDING"
-        # Return state immediately to let core voice loop stream the filler audio
         return state
 
-    # Step B: Background crawler parsing
     state["pending_filler_action"] = None
-    logger.info(f"Executing async live web-scrape for: '{user_query}'")
+    logger.info(f"Executing async live web-scrape for domain '{domain}': '{user_query}'")
     
-    # Run the crawler with the user query to get semantic chunks
     scraped_context = await crawler.fetch_and_parse(user_query)
     state["rag_context"] = scraped_context
     
-    config = load_agent_config()
+    config = load_agent_config(domain)
     prompt = config.get("conversationFlow", {}).get("global_prompt", "")
     
+    topic_label = "education courses and admissions" if domain == "education" else "properties and real estate"
     instruction = (
-        "Answer the user's specific question about education courses and admissions using only the provided context. "
+        f"Answer the user's specific question about {topic_label} using only the provided context. "
         "Keep it conversational, natural, and under 20 words. No bullet points."
     )
     
@@ -463,15 +480,15 @@ async def handle_live_search(state: ConversationState, crawler: Any) -> Conversa
         role = "assistant" if isinstance(msg, AIMessage) else "user"
         history.append({"role": role, "content": msg.content})
         
-    response = await generate_voice_response(f"{prompt}\n{instruction}", history, context=scraped_context)
+    response = await generate_voice_response(f"{prompt}\n{instruction}", history, context=scraped_context, domain=domain)
     state["messages"].append(AIMessage(content=response))
     
-    # Re-route to closing or qualification depending on missing details
-    state["current_node"] = "CLOSING" if state.get("extracted_slots", {}).get("timeline") else "QUALIFICATION"
+    state["current_node"] = "CLOSING" if (state.get("extracted_slots", {}).get("timeline") or domain == "education") else "QUALIFICATION"
     return state
 
 async def handle_objection_handling(state: ConversationState) -> ConversationState:
-    config = load_agent_config()
+    domain = state.get("domain") or "real_estate"
+    config = load_agent_config(domain)
     prompt = config.get("conversationFlow", {}).get("global_prompt", "")
 
     language = state.get("language", "en")
@@ -479,70 +496,123 @@ async def handle_objection_handling(state: ConversationState) -> ConversationSta
     slot_context = _build_slot_context(slots)
     user_input = state.get("user_input", "").lower()
 
-    # Detect specific objection types for targeted handling
     already_spoke_phrases = ["already spoke", "already called", "another agent", "already talked", "someone else called"]
     just_browsing_phrases = ["just browsing", "just looking", "not seriously", "not ready", "just exploring"]
     whatsapp_phrases = ["send on whatsapp", "whatsapp me", "drop a message", "send me details", "message me"]
     how_number_phrases = ["how did you get", "where did you get my number", "who gave you", "data leak", "where you got"]
     scam_phrases = ["scam", "fraud", "fake", "genuine company", "real company", "is this real", "is this legit"]
 
-    if any(p in user_input for p in scam_phrases):
-        instruction = (
-            f"{slot_context}\n\n"
-            "The caller is questioning whether this is a legitimate company or a scam. "
-            "Respond like a calm, unbothered professional — briefly and transparently. "
-            "Don't over-explain or sound defensive. Something like: 'We're an AI Education Counselling platform helping students find suitable courses and colleges.' "
-            "Then smoothly return to the conversation. "
-            "10-18 words only. No exclamation marks."
-        )
-    elif any(p in user_input for p in how_number_phrases):
-        instruction = (
-            f"{slot_context}\n\n"
-            "The caller is asking how you got their number. Be honest and calm — we received their inquiry via a "
-            "property portal or referral. Don't be defensive. One brief honest sentence, then pivot gently. "
-            "15-20 words total."
-        )
-    elif any(p in user_input for p in whatsapp_phrases):
-        instruction = (
-            f"{slot_context}\n\n"
-            "The caller wants you to send details over WhatsApp instead of calling. Agree naturally — "
-            "'Sure, I can drop a quick note on WhatsApp. I'll need your number though — should I save the one "
-            "you're calling from?' Then ask ONE clarifying question to keep the lead warm. 20-25 words."
-        )
-    elif any(p in user_input for p in already_spoke_phrases):
-        instruction = (
-            f"{slot_context}\n\n"
-            "The caller mentions they already spoke to another agent about this. Acknowledge it without being dismissive — "
-            "'Got it, I just wanted to check if there were any open questions on your end.' "
-            "Then ask one genuinely useful follow-up. 18-25 words."
-        )
-    elif any(p in user_input for p in just_browsing_phrases):
-        instruction = (
-            f"{slot_context}\n\n"
-            "The caller says they are just browsing and not seriously looking yet. That's fine — don't push. "
-            "Acknowledge it warmly, offer something useful without pressure, like 'No rush at all — I can just flag "
-            "good options when they come up. What kind of property were you loosely thinking about?' "
-            "20-28 words."
-        )
-    else:
-        # Generic objection handling — existing logic
-        if not slots.get("intent") and not slots.get("intent_value"):
-            pivot_question = "Ask what they're thinking of doing — buying, renting, or investing."
-        elif not slots.get("bhk") and not slots.get("preferred_bhk"):
-            pivot_question = "Ask what apartment size would work for them."
-        elif not slots.get("budget") and not slots.get("budget_range"):
-            pivot_question = "Ask for a rough budget range so you can pull up the right options."
+    if domain == "education":
+        if any(p in user_input for p in scam_phrases):
+            instruction = (
+                f"{slot_context}\n\n"
+                "The caller is questioning whether this is a legitimate company or a scam. "
+                "Respond like a calm, unbothered professional AI Education Counsellor — briefly and transparently. "
+                "Don't over-explain or sound defensive. Something like: 'We're an AI Education Counselling platform helping students find suitable courses and colleges.' "
+                "Then smoothly return to the conversation. "
+                "10-18 words only. No exclamation marks."
+            )
+        elif any(p in user_input for p in how_number_phrases):
+            instruction = (
+                f"{slot_context}\n\n"
+                "The caller is asking how you got their number. Be honest and calm — we received their inquiry via an "
+                "education counselling form or referral. Don't be defensive. One brief honest sentence, then pivot gently. "
+                "15-20 words total."
+            )
+        elif any(p in user_input for p in whatsapp_phrases):
+            instruction = (
+                f"{slot_context}\n\n"
+                "The caller wants you to send course details over WhatsApp instead of calling. Agree naturally — "
+                "'Sure, I can drop a quick note on WhatsApp. Should I save the number you're calling from?' "
+                "Then ask ONE clarifying education question. 20-25 words."
+            )
+        elif any(p in user_input for p in already_spoke_phrases):
+            instruction = (
+                f"{slot_context}\n\n"
+                "The caller mentions they already spoke to another counsellor. Acknowledge it without being dismissive — "
+                "'Got it, I just wanted to check if there were any open questions on your end about courses or admissions.' "
+                "Then ask one genuinely useful follow-up. 18-25 words."
+            )
+        elif any(p in user_input for p in just_browsing_phrases):
+            instruction = (
+                f"{slot_context}\n\n"
+                "The caller says they are just exploring options. That's fine — don't push. "
+                "Acknowledge it warmly, offer something useful without pressure, like 'No rush at all — what field or degree are you loosely thinking about?' "
+                "20-28 words."
+            )
         else:
-            pivot_question = "Ask when they might be ready to take a next step."
+            if not slots.get("preferred_course") and not slots.get("current_qualification"):
+                pivot_question = "Ask what course or qualification they are planning to pursue."
+            elif not slots.get("preferred_city") and not slots.get("preferred_country"):
+                pivot_question = "Ask where they prefer to study — India or abroad."
+            else:
+                pivot_question = "Ask if they would like to speak with a human counsellor."
 
-        instruction = (
-            f"{slot_context}\n\n"
-            "The user raised a concern or hesitation. Respond like a real person who actually heard them.\n"
-            "First, show you understood — one honest sentence that validates what they said, without being overly apologetic.\n"
-            "Then ask one question to move forward gently.\n"
-            f"Question to ask: {pivot_question}\n"
-            "ONE question only. 15-28 words total. No sales pitch, no pressure."
-        )
+            instruction = (
+                f"{slot_context}\n\n"
+                "The student raised a concern or hesitation. Respond warmly as Aarohi, their education counsellor.\n"
+                "First, show you understood in one honest sentence.\n"
+                "Then ask one question to move forward gently.\n"
+                f"Question to ask: {pivot_question}\n"
+                "ONE question only. 15-28 words total."
+            )
+    else:
+        if any(p in user_input for p in scam_phrases):
+            instruction = (
+                f"{slot_context}\n\n"
+                "The caller is questioning whether this is a legitimate company or a scam. "
+                "Respond like a calm, unbothered professional — briefly and transparently. "
+                "Don't over-explain or sound defensive. Something like: 'We're a real estate developer helping home buyers find properties.' "
+                "Then smoothly return to the conversation. "
+                "10-18 words only. No exclamation marks."
+            )
+        elif any(p in user_input for p in how_number_phrases):
+            instruction = (
+                f"{slot_context}\n\n"
+                "The caller is asking how you got their number. Be honest and calm — we received their inquiry via a "
+                "property portal or referral. Don't be defensive. One brief honest sentence, then pivot gently. "
+                "15-20 words total."
+            )
+        elif any(p in user_input for p in whatsapp_phrases):
+            instruction = (
+                f"{slot_context}\n\n"
+                "The caller wants you to send details over WhatsApp instead of calling. Agree naturally — "
+                "'Sure, I can drop a quick note on WhatsApp. I'll need your number though — should I save the one "
+                "you're calling from?' Then ask ONE clarifying question to keep the lead warm. 20-25 words."
+            )
+        elif any(p in user_input for p in already_spoke_phrases):
+            instruction = (
+                f"{slot_context}\n\n"
+                "The caller mentions they already spoke to another agent about this. Acknowledge it without being dismissive — "
+                "'Got it, I just wanted to check if there were any open questions on your end.' "
+                "Then ask one genuinely useful follow-up. 18-25 words."
+            )
+        elif any(p in user_input for p in just_browsing_phrases):
+            instruction = (
+                f"{slot_context}\n\n"
+                "The caller says they are just browsing and not seriously looking yet. That's fine — don't push. "
+                "Acknowledge it warmly, offer something useful without pressure, like 'No rush at all — I can just flag "
+                "good options when they come up. What kind of property were you loosely thinking about?' "
+                "20-28 words."
+            )
+        else:
+            if not slots.get("intent") and not slots.get("intent_value"):
+                pivot_question = "Ask what they're thinking of doing — buying, renting, or investing."
+            elif not slots.get("bhk") and not slots.get("preferred_bhk"):
+                pivot_question = "Ask what apartment size would work for them."
+            elif not slots.get("budget") and not slots.get("budget_range"):
+                pivot_question = "Ask for a rough budget range so you can pull up the right options."
+            else:
+                pivot_question = "Ask when they might be ready to take a next step."
+
+            instruction = (
+                f"{slot_context}\n\n"
+                "The user raised a concern or hesitation. Respond like a real person who actually heard them.\n"
+                "First, show you understood — one honest sentence that validates what they said, without being overly apologetic.\n"
+                "Then ask one question to move forward gently.\n"
+                f"Question to ask: {pivot_question}\n"
+                "ONE question only. 15-28 words total. No sales pitch, no pressure."
+            )
 
     history = []
     for msg in state["messages"]:
@@ -550,21 +620,28 @@ async def handle_objection_handling(state: ConversationState) -> ConversationSta
         history.append({"role": role, "content": msg.content})
 
     response = await generate_voice_response(
-        f"{prompt}\n{instruction}", history, language=language
+        f"{prompt}\n{instruction}", history, language=language, slots=slots, domain=domain
     )
     state["messages"].append(AIMessage(content=response))
     return state
 
 async def handle_scheduling(state: ConversationState) -> ConversationState:
-    config = load_agent_config()
+    domain = state.get("domain") or "real_estate"
+    config = load_agent_config(domain)
     prompt = config.get("conversationFlow", {}).get("global_prompt", "")
     language = state.get("language", "en")
 
-    instruction = (
-        "The user is ready to schedule. Ask them lightly and confidently if they'd be free "
-        "this weekend for a quick site visit. Mention Saturday or Sunday as options. "
-        "Sound excited for them, not salesy. One question only."
-    )
+    if domain == "education":
+        instruction = (
+            "The user is ready to proceed with counselling. Ask them warmly if they'd be open to a quick "
+            "1-on-1 consultation session with an expert education counsellor. One question only."
+        )
+    else:
+        instruction = (
+            "The user is ready to schedule. Ask them lightly and confidently if they'd be free "
+            "this weekend for a quick site visit. Mention Saturday or Sunday as options. "
+            "Sound excited for them, not salesy. One question only."
+        )
 
     history = []
     for msg in state["messages"]:
@@ -572,7 +649,7 @@ async def handle_scheduling(state: ConversationState) -> ConversationState:
         history.append({"role": role, "content": msg.content})
 
     response = await generate_voice_response(
-        f"{prompt}\n{instruction}", history, language=language
+        f"{prompt}\n{instruction}", history, language=language, domain=domain
     )
     state["messages"].append(AIMessage(content=response))
     return state
@@ -603,8 +680,8 @@ async def handle_open_domain_query(state: ConversationState) -> ConversationStat
     off-script tangents, meta-questions about the call, small talk, etc.
     Answers naturally in-character, then re-anchors to the conversation.
     """
-    from llm.pipeline_logger import pipeline_logger
-    config = load_agent_config()
+    domain = state.get("domain") or "real_estate"
+    config = load_agent_config(domain)
     prompt = config.get("conversationFlow", {}).get("global_prompt", "")
     language = state.get("language", "en")
     slots = state.get("extracted_slots", {})
@@ -612,37 +689,59 @@ async def handle_open_domain_query(state: ConversationState) -> ConversationStat
     user_input = state.get("user_input", "")
     return_node = state.get("pending_return_node", "DISCOVERY")
 
-    # Log for ongoing knowledge base expansion
+    from llm.pipeline_logger import pipeline_logger
     pipeline_logger.log_event("OPEN_DOMAIN_DETOUR", {
         "user_input": user_input,
         "language": language,
         "return_node": return_node,
         "slots": slots,
+        "domain": domain,
     })
-    logger.info("[OPEN_DOMAIN] Detour for: '%s'. Will return to: %s", user_input, return_node)
+    logger.info("[OPEN_DOMAIN] Detour for domain '%s': '%s'. Will return to: %s", domain, user_input, return_node)
 
-    # Determine what to re-anchor to after answering
-    if return_node == "QUALIFICATION" or slots.get("intent"):
-        if not slots.get("bhk") and not slots.get("preferred_bhk"):
-            re_anchor = "After answering, gently ask: what size apartment are they looking for?"
-        elif not slots.get("budget") and not slots.get("budget_range"):
-            re_anchor = "After answering, gently ask: what budget range should you work with?"
+    if domain == "education":
+        if return_node == "QUALIFICATION" or slots.get("preferred_course"):
+            if not slots.get("preferred_city") and not slots.get("preferred_country"):
+                re_anchor = "After answering, gently ask: which city or country do you prefer for your studies?"
+            elif not slots.get("budget") and not slots.get("budget_range"):
+                re_anchor = "After answering, gently ask: what is your approximate budget for the course?"
+            else:
+                re_anchor = "After answering, suggest connecting with an expert education counsellor."
         else:
-            re_anchor = "After answering, suggest taking a next step like a site visit."
-    else:
-        re_anchor = "After answering, naturally ask whether they are looking to buy, rent, or invest."
+            re_anchor = "After answering, naturally ask what course or qualification they are planning to pursue."
 
-    instruction = (
-        f"{slot_context}\n\n"
-        "The caller has asked something outside the property script — it could be small talk, a question about "
-        "the call itself, a meta-question about the company, timing, or anything unrelated to buying/renting.\n"
-        "Answer briefly and naturally in character as Priya — warm, calm, never robotic.\n"
-        "Do not ignore the question to push your own agenda.\n"
-        "Do not invent specific facts you don't have (RERA numbers, exact prices, possession dates).\n"
-        "After you've answered, return smoothly to the conversation.\n"
-        f"{re_anchor}\n"
-        "Total response: 20-35 words. No exclamation marks."
-    )
+        instruction = (
+            f"{slot_context}\n\n"
+            "The caller asked a question or made an off-script comment (e.g. asking for PhD research topics, career advice after MCA, company information, scholarships, entrance exams, or general questions).\n"
+            "Answer briefly, accurately, and naturally in character as Aarohi — a warm, supportive, professional AI Education Counsellor.\n"
+            "STRICT EDUCATION RULE: NEVER mention real estate, properties, BHKs, apartments, site visits, or Suncity. Stay 100% inside the education and career domain.\n"
+            "If they ask for PhD research topics, suggest relevant topics such as AI, Machine Learning, Data Science, Cybersecurity, Cloud Computing, etc.\n"
+            "After answering, return smoothly to the education counselling conversation.\n"
+            f"{re_anchor}\n"
+            "Total response: 20-35 words. No exclamation marks."
+        )
+    else:
+        if return_node == "QUALIFICATION" or slots.get("intent"):
+            if not slots.get("bhk") and not slots.get("preferred_bhk"):
+                re_anchor = "After answering, gently ask: what size apartment are they looking for?"
+            elif not slots.get("budget") and not slots.get("budget_range"):
+                re_anchor = "After answering, gently ask: what budget range should you work with?"
+            else:
+                re_anchor = "After answering, suggest taking a next step like a site visit."
+        else:
+            re_anchor = "After answering, naturally ask whether they are looking to buy, rent, or invest."
+
+        instruction = (
+            f"{slot_context}\n\n"
+            "The caller has asked something outside the property script — it could be small talk, a question about "
+            "the call itself, a meta-question about the company, timing, or anything unrelated to buying/renting.\n"
+            "Answer briefly and naturally in character as Priya — warm, calm, never robotic.\n"
+            "Do not ignore the question to push your own agenda.\n"
+            "Do not invent specific facts you don't have (RERA numbers, exact prices, possession dates).\n"
+            "After you've answered, return smoothly to the conversation.\n"
+            f"{re_anchor}\n"
+            "Total response: 20-35 words. No exclamation marks."
+        )
 
     history = []
     for msg in state["messages"]:
@@ -650,10 +749,9 @@ async def handle_open_domain_query(state: ConversationState) -> ConversationStat
         history.append({"role": role, "content": msg.content})
 
     response = await generate_voice_response(
-        f"{prompt}\n{instruction}", history, language=language
+        f"{prompt}\n{instruction}", history, language=language, slots=slots, domain=domain
     )
     state["messages"].append(AIMessage(content=response))
-    # Restore the return node so the next routing pass picks it up
     state["current_node"] = return_node
     state["pending_return_node"] = None
     return state

@@ -1,0 +1,230 @@
+{
+  "schema_version": "2.0",
+  "id": "flowv2_5c97a81c9112",
+  "agent_id": "education_counselling",
+  "agent_name": "Aarohi \u2014 Education Counselling Specialist",
+  "agent_type": "education",
+  "status": "published",
+  "runtime_mode": "live",
+  "default_locale": "en",
+  "supported_locales": [
+    "en",
+    "hi",
+    "mr"
+  ],
+  "start_node_id": "start",
+  "global_prompt": "You are Aarohi, an AI Education Counsellor guiding students on courses, colleges, entrance exams, and study abroad options.\n\nWebsite intelligence source: https://www.shiksha.com/.\nComplete Company Knowledge Summary:\n## Company Overview\nShiksha.com is a premier Indian education portal focused on higher education, college discovery, and course selection. It operates as a B2C platform providing comprehensive resources for students and parents. The company serves as a central hub for admissions guidance, entrance exam preparation, and study abroad planning. While specific headquarters details are not provided in the snapshot, the platform is deeply rooted in the Indian education landscape with a global reach for study abroad services.\n\n## Mission & Vision\nSpecific mission and vision statements are not explicitly detailed in the provided text, but the operational focus suggests a mission to simplify the higher education journey through data-driven insights and expert guidance.\n\n## Products\n*   **Course Discovery Platform**: Enables users to find and compare undergraduate (BTech, BCA, BSc, BBA, BCom, MBBS) and postgraduate (MCA, MBA, MTech, MSc) programs.\n*   **College & University Directory**: A searchable database of top engineering, management, IT, medical, and law colleges, with specific focus on cities like Pune, Mumbai, Bangalore, and Delhi.\n*   **Entrance Exam Hub**: Provides syllabus, dates, and preparation guides for major exams including JEE Main, NEET, MAH-CET, CAT, GATE, GRE, GMAT, IELTS, and TOEFL.\n*   **Study Abroad Suite**: Offers admission guidance for the USA, UK, Canada, Germany, Australia, and Ireland, including SOP/LOR assistance and visa guidance.\n\n## Services\n*   **Admissions Guidance**: Detailed eligibility criteria, application deadlines, cutoffs, and selection process analysis.\n*   **Financial Aid Assistance**: Information on fee structures, government/private scholarships, and education loans.\n*   **Expert Counselling**: Personalized support for course selection and college shortlisting.\n\n## Features\n*   **Comparison Tools**: Side-by-side comparison of colleges and courses.\n*   **Exam Preparation Guides**: Structured resources for entrance exam aspirants.\n*   **Documentation Support**: Assistance with SOPs and LORs for international applications.\n*   **Location-Based Filtering**: Search capabilities for specific Indian cities and global destinations.\n\n## Industries Served\n*   Higher Education\n*   Engineering & Technology\n*   Management & Business\n*   Medical & Health Sciences\n*   Law\n*   International Education\n\n## Customer Segments\n*   High school graduates seeking undergraduate admissions.\n*   Undergraduate students seeking postgraduate admissions.\n*   Parents assisting in educational decision-making.\n*   International student aspirants.\n\n## Pricing\nPricing information is not publicly available. The platform likely operates on a freemium model or generates revenue through institutional partnerships and lead generation, though this is not explicitly stated in the text.\n\n## FAQs\nNo specific FAQs were found in the provided text.\n\n## Technologies\n*   Web-based Portal\n*   Search and Filtering Algorithms\n*   Data Management Systems for College/Exam Data\n\n## Integrations\nNo specific third-party integrations are mentioned in the text.\n\n## Security & Compliance\nNo specific security or compliance details are mentioned in the text.\n\n## Contact Information\n*   **Website**: https://www.shiksha.com/\n*   **Counselling Support**: Available via the platform for education counselling, course selection, and college shortlisting.\n*   **Social Media**: Not specified in the text.\n\n## Careers\nNo career information is provided in the text.\n\n## Blogs & News\nNo recent news or blog summaries are provided in the text.\n\n## Policies & Compliance\nNo specific policy links or summaries are provided in the text.\n\n## Support\n*   **Expert Counsellors**: Available for education counselling, course selection, and college shortlisting.\n\n## Company Highlights & Key Facts\n*   Recognized as India's leading education portal.\n*   Covers a wide array of entrance exams (JEE, NEET, CAT, GATE, etc.).\n*   Extensive coverage of study abroad destinations (USA, UK, Canada, Germany, Australia, Ireland).\n*   Focus on major Indian educational hubs (Pune, Mumbai, Bangalore, Delhi).\n\n## Competitive Advantages\n*   **Comprehensive Data**: Aggregates detailed information on fees, scholarships, and cutoffs.\n*   **End-to-End Support**: Covers the entire journey from discovery to admission and visa guidance.\n*   **Expertise**: Access to expert counsellors for personalized advice.\n*   **Breadth of Coverage**: Includes both domestic and international education options.\n\n## Frequently Discussed Topics\n*   Eligibility criteria for various courses.\n*   Entrance exam syllabus and dates.\n*   College rankings and comparisons.\n*   Scholarship and loan options.\n*   Study abroad visa processes.\n\n## Semantic Keywords & Synonyms\nEducation portal, college finder, course discovery, admissions help, entrance exam prep, JEE Main, NEET, CAT, GATE, study abroad, visa guidance, SOP writing, LOR assistance, college directory, university rankings, fee structure, scholarships, education loans, higher education, undergraduate programs, postgraduate programs, BTech, MBA, MBBS, BCA, MCA, MTech, MSc, BBA, BCom, BSc, Pune colleges, Mumbai colleges, Bangalore colleges, Delhi colleges, USA study, UK study, Canada study, Germany study, Australia study, Ireland study.\n\n## Relationships & Use Cases\n*   **Student -> Course Discovery**: A student uses the platform to find BTech programs, compares colleges in Bangalore, checks JEE Main eligibility, and seeks counselling for final shortlisting.\n*   **Parent -> Financial Aid**: A parent uses the fee structure and scholarship sections to plan for education loans.\n*   **Aspirant -> Study Abroad**: A graduate uses the study abroad section to find universities in Canada, gets SOP assistance, and receives visa guidance.\nUse only verified website facts and keep unsupported claims out of the call.",
+  "slots": [],
+  "intents": [
+    {
+      "id": "confirm",
+      "examples": [
+        "yes",
+        "okay",
+        "sure"
+      ]
+    },
+    {
+      "id": "deny",
+      "examples": [
+        "no",
+        "not interested"
+      ]
+    },
+    {
+      "id": "unclear",
+      "examples": [
+        "hmm",
+        "repeat"
+      ]
+    },
+    {
+      "id": "provide_info",
+      "examples": [
+        "my budget is 50 lakh"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "message",
+      "label": "Greeting",
+      "response": {
+        "en": "Hello, this is Aarohi \u2014 Education Counselling Specialist. Am I speaking with {{name}}?"
+      },
+      "transitions": [
+        {
+          "intent": "confirm",
+          "target": "discovery"
+        },
+        {
+          "intent": "deny",
+          "target": "end"
+        },
+        {
+          "intent": "unclear",
+          "target": "fallback"
+        }
+      ]
+    },
+    {
+      "id": "discovery",
+      "type": "slot_collection",
+      "label": "Discovery",
+      "collects": [],
+      "response": {
+        "en": "Could you share a little about what you are looking for?"
+      },
+      "transitions": [
+        {
+          "intent": "provide_info",
+          "target": "confirm_followup"
+        },
+        {
+          "intent": "confirm",
+          "target": "confirm_followup"
+        },
+        {
+          "intent": "unclear",
+          "target": "fallback"
+        }
+      ]
+    },
+    {
+      "id": "fallback",
+      "type": "fallback",
+      "label": "Clarify",
+      "response": {
+        "en": "Sorry, I did not catch that clearly. Could you repeat it once?"
+      },
+      "fallback": {
+        "max_attempts": 2,
+        "escalation_target": "end"
+      },
+      "transitions": [
+        {
+          "intent": "provide_info",
+          "target": "discovery"
+        },
+        {
+          "intent": "confirm",
+          "target": "discovery"
+        },
+        {
+          "intent": "deny",
+          "target": "end"
+        }
+      ]
+    },
+    {
+      "id": "confirm_followup",
+      "type": "message",
+      "label": "Confirm Follow-up",
+      "response": {
+        "en": "Thanks. I will have the team follow up with the right details."
+      },
+      "transitions": [
+        {
+          "intent": "confirm",
+          "target": "end"
+        },
+        {
+          "intent": "deny",
+          "target": "end"
+        },
+        {
+          "intent": "unclear",
+          "target": "fallback"
+        }
+      ]
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "label": "End",
+      "response": {
+        "en": "Thank you. Have a good day."
+      },
+      "transitions": []
+    }
+  ],
+  "metadata": {
+    "source": "website_intelligence",
+    "source_language": "English",
+    "validation_required": true,
+    "source_url": "https://www.shiksha.com/",
+    "industry": "education",
+    "review_required": true,
+    "website_intelligence": {
+      "domain": "www.shiksha.com",
+      "source_url": "https://www.shiksha.com/",
+      "industry": "education",
+      "advisory_only": true,
+      "auto_publish": false,
+      "quality": {
+        "score": 100,
+        "level": "high",
+        "ready_for_review": true,
+        "warnings": []
+      },
+      "evidence_urls": [
+        "https://www.shiksha.com/"
+      ],
+      "content_inventory": {
+        "page_types": {
+          "services": 1
+        },
+        "has_services": true,
+        "has_faq": false,
+        "has_contact": false,
+        "noise_filtered": true
+      },
+      "review_checklist": [
+        {
+          "key": "human_review_required",
+          "label": "Human review required before publishing",
+          "passed": true
+        },
+        {
+          "key": "quality_ready_for_review",
+          "label": "Extraction quality is ready for review",
+          "passed": true
+        },
+        {
+          "key": "source_evidence_present",
+          "label": "Website evidence URLs are attached",
+          "passed": true
+        },
+        {
+          "key": "services_detected",
+          "label": "Products or services were detected",
+          "passed": true
+        },
+        {
+          "key": "conversation_guidance_present",
+          "label": "Qualification or objection guidance is present",
+          "passed": true
+        },
+        {
+          "key": "noise_filtered",
+          "label": "Crawler noise filtering was applied",
+          "passed": true
+        }
+      ],
+      "limitations": [
+        "Only public website content fetched within configured crawl limits was used.",
+        "Human review is required before publishing any generated workflow."
+      ]
+    },
+    "applied_from_script_draft_id": "4fcfa730-a212-4bd7-bb1b-ecb1c42af906",
+    "live_runtime_unchanged": false,
+    "published_at": "2026-09-19T20:09:00.794186",
+    "published_to": "v1_runtime_schema"
+  },
+  "validation": {
+    "status": "valid",
+    "node_count": 5,
+    "terminal_count": 1
+  }
+}

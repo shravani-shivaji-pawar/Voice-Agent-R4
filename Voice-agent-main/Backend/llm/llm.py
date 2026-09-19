@@ -191,7 +191,32 @@ class CombinedResponseAnalysis(BaseModel):
     intent_analysis: IntentAnalysis
     spoken_reply_text: str
 
-COMBINED_EXTRACTION_PROMPT = """You are Aarohi, an AI Education Counsellor on a live phone call.
+_REAL_ESTATE_LEAKAGE_WORDS = re.compile(
+    r"\b(?:suncity|apartments?|flats?|properties|property|bhk|site\s*visit|real\s*estate|priya|neha|investment\s*property|real\s*estate\s*advisor)\b",
+    re.IGNORECASE
+)
+
+def _check_and_fix_domain_leakage(text: str, domain: str = "real_estate", language: str = "en") -> str:
+    """
+    Safety Guard: Intercepts and replaces residual Real Estate phrasing if generated during an Education session.
+    """
+    if domain != "education" or not text:
+        return text
+        
+    if _REAL_ESTATE_LEAKAGE_WORDS.search(text):
+        logger.warning(f"[DOMAIN GUARD] Real Estate leakage intercepted in Education mode: '{text}'")
+        from llm.language_utils import normalize_language_code
+        lang = normalize_language_code(language)
+        if lang in ("hi", "hinglish"):
+            return "मैं आपकी एजुकेशन काउंसलर हूँ। मैं आपको सही कोर्स, कॉलेज, एंट्रेंस एग्जाम और करियर पाथ चुनने में मदद कर सकती हूँ।"
+        elif lang == "mr":
+            return "मी तुमची एज्युकेशन कौन्सिलर आहे. मी तुम्हाला योग्य कोर्स, कॉलेज आणि करिअर पर्यायांसाठी मदत करू शकते."
+        else:
+            return "I am your AI education counsellor. I can help you explore courses, colleges, entrance exams, and career pathways."
+            
+    return text
+
+COMBINED_EXTRACTION_EDUCATION_PROMPT = """You are Aarohi, an AI Education Counsellor on a live phone call.
 
 Perform two tasks in a single turn:
 1. Extract the student's intent and profile entities based on their latest message.
@@ -203,6 +228,7 @@ Extract entities: current_qualification, preferred_course, preferred_specializat
 Spoken Response Rules:
 - Match the user's language: If the user speaks Hindi or Hinglish, respond in natural spoken Hindi/Hinglish.
 - NEVER invent factual details about specific colleges, cutoffs, rankings, placement stats, scholarships, or exact fees. State clearly that details vary by university.
+- NEVER mention real estate, apartments, BHKs, site visits, or Suncity.
 - Keep responses to 15-25 words. Plain spoken sentences. NEVER use bullet points, tables, lists, or markdown formatting.
 
 Respond ONLY with a valid JSON object matching this schema:
@@ -229,12 +255,49 @@ Respond ONLY with a valid JSON object matching this schema:
 }
 """
 
-async def generate_combined_intent_and_response(user_input: str, history: List[Dict[str, str]], context: str = "") -> CombinedResponseAnalysis:
+COMBINED_EXTRACTION_REAL_ESTATE_PROMPT = """You are Priya, a Senior Real Estate Sales Advisor at Suncity Apartments on a live phone call.
+
+Perform two tasks in a single turn:
+1. Extract the user's intent and property preference entities based on their latest message.
+2. Generate your spoken reply text naturally in the SAME language as the user (English, Hindi, or Hinglish).
+
+Use the INTENT classes: GREETING, DISCOVERY, QUALIFICATION, LIVE_SEARCH, OBJECTION_HANDLING, SCHEDULING, CLOSING.
+Extract entities: location, budget, bhk, property_type, intent_value, timeline, user_name, phone.
+
+Spoken Response Rules:
+- Match the user's language: Respond in natural spoken English, Hindi, or Hinglish.
+- Focus on property discovery (apartment size 1/2/3 BHK, location, budget, site visit scheduling).
+- Keep responses to 15-25 words. Plain spoken sentences. NEVER use bullet points, tables, lists, or markdown formatting.
+
+Respond ONLY with a valid JSON object matching this schema:
+{
+  "intent_analysis": {
+    "intent": "GREETING | DISCOVERY | QUALIFICATION | LIVE_SEARCH | OBJECTION_HANDLING | SCHEDULING | CLOSING",
+    "confidence_score": 0.0 to 1.0,
+    "entities": {
+      "location": "string | null",
+      "budget": "string | null",
+      "bhk": "string | null",
+      "property_type": "string | null",
+      "intent_value": "string | null",
+      "timeline": "string | null",
+      "user_name": "string | null",
+      "phone": "string | null"
+    }
+  },
+  "spoken_reply_text": "Your natural spoken response here"
+}
+"""
+
+COMBINED_EXTRACTION_PROMPT = COMBINED_EXTRACTION_EDUCATION_PROMPT
+
+async def generate_combined_intent_and_response(user_input: str, history: List[Dict[str, str]], context: str = "", domain: str = "real_estate") -> CombinedResponseAnalysis:
     """
     Fast path: queries Groq using llama-3.3-70b-versatile to extract slots AND generate the response in one shot.
     """
+    prompt_template = COMBINED_EXTRACTION_EDUCATION_PROMPT if domain == "education" else COMBINED_EXTRACTION_REAL_ESTATE_PROMPT
     messages = [
-        {"role": "system", "content": COMBINED_EXTRACTION_PROMPT + (f"\n\nLive Context: {context}" if context else "")}
+        {"role": "system", "content": prompt_template + (f"\n\nLive Context: {context}" if context else "")}
     ]
     
     for msg in history[-8:]:
@@ -255,12 +318,14 @@ async def generate_combined_intent_and_response(user_input: str, history: List[D
         data = json.loads(raw_json)
         if "spoken_reply_text" in data and data["spoken_reply_text"]:
             data["spoken_reply_text"] = _sanitize_llm_text(data["spoken_reply_text"])
+            data["spoken_reply_text"] = _check_and_fix_domain_leakage(data["spoken_reply_text"], domain=domain, language="en")
         return CombinedResponseAnalysis(**data)
     except Exception as e:
         logger.error(f"Failed to generate combined response: {e}")
+        fallback_text = "Let me check that for you." if domain == "education" else "Give me just one moment..."
         return CombinedResponseAnalysis(
             intent_analysis=IntentAnalysis(intent="DISCOVERY", confidence_score=0.0, entities=ExtractedEntities()),
-            spoken_reply_text="Give me just one moment..."
+            spoken_reply_text=fallback_text
         )
 
 _NEHA_PERSONA = (
@@ -645,12 +710,14 @@ async def generate_voice_response(
         is_valid, reason = validate_response_language(clean_text, session_lang)
         if not is_valid:
             logger.warning("[RESPONSE VALIDATOR] Language mismatch detected: %s. Returning locked contextual fallback.", reason)
-            return _get_contextual_fallback(session_lang, prompt, is_greeting, history, slots=slots, domain=domain)
+            fallback = _get_contextual_fallback(session_lang, prompt, is_greeting, history, slots=slots, domain=domain)
+            return _check_and_fix_domain_leakage(fallback, domain, session_lang)
 
-        return clean_text
+        return _check_and_fix_domain_leakage(clean_text, domain, session_lang)
     except Exception as e:
         logger.error(f"Groq voice generation exception: {e}")
-        return _get_contextual_fallback(session_lang, prompt, is_greeting, history, slots=slots, domain=domain)
+        fallback = _get_contextual_fallback(session_lang, prompt, is_greeting, history, slots=slots, domain=domain)
+        return _check_and_fix_domain_leakage(fallback, domain, session_lang)
 
 _COMPANY_QUESTION_PATTERNS = re.compile(
     r"\b(?:what does (?:this|your) company do|what do you do|who is your CEO|who is the CEO|who founded|who created|who is the owner|where is your office|where are you located|tell me about your company|company details|company profile|what is suncity|what is this company|about suncity|suncity apartments|tell me about suncity|who are you|who are you calling from|which company are you calling from|headquarters|headquarter|head office|ऑफिस|मुख्यालय|कंपनी क्या करती है|सनसिटी क्या है|प्रोजेक्ट क्या है)\b",
@@ -691,7 +758,14 @@ async def generate_response(
                 classification = "company_question"
 
         if classification == "company_question":
-            domain = state_manager.schema.get("domain", "real_estate") if (hasattr(state_manager, "schema") and state_manager.schema) else "real_estate"
+            domain = "real_estate"
+            if state_manager and hasattr(state_manager, "schema") and state_manager.schema:
+                raw_d = state_manager.schema.get("domain") or state_manager.schema.get("agent_id") or ""
+                if raw_d in ("education", "education_counselling", "aarohi"):
+                    domain = "education"
+            elif runtime_context and runtime_context.get("domain") in ("education", "education_counselling", "aarohi"):
+                domain = "education"
+
             nodes = state_manager.schema.get("conversationFlow", {}).get("nodes", []) if (hasattr(state_manager, "schema") and state_manager.schema) else []
             
             # 1. JSON Lookup
@@ -731,7 +805,12 @@ async def generate_response(
             if any(k in user_text.lower() for k in ["who are you", "who is this", "kon ho", "kaun ho", "कौन हो", "आपका नाम"]):
                 domain = "real_estate"
                 if state_manager and hasattr(state_manager, "schema") and state_manager.schema:
-                    domain = state_manager.schema.get("domain", "real_estate")
+                    raw_d = state_manager.schema.get("domain") or state_manager.schema.get("agent_id") or ""
+                    if raw_d in ("education", "education_counselling", "aarohi"):
+                        domain = "education"
+                elif runtime_context and runtime_context.get("domain") in ("education", "education_counselling", "aarohi"):
+                    domain = "education"
+
                 if domain == "education":
                     if language == "hi":
                         answer = "नमस्ते! मैं आरोही बोल रही हूँ, आपकी एजुकेशन काउंसलर। मैं आपको कोर्स, कॉलेज, एंट्रेंस एग्जाम और एडमिशन प्रोसेस के लिए गाइड कर सकती हूँ।"
@@ -747,7 +826,7 @@ async def generate_response(
                     else:
                         answer = "Hello! This is Priya from Suncity Apartments. I'm here to assist you with finding the right property."
                     
-            finalized_response = answer
+            finalized_response = _check_and_fix_domain_leakage(answer, domain=domain, language=language)
 
             # Detailed runtime logs matching the user checklist exactly
             logger.info(
@@ -830,7 +909,11 @@ async def generate_response(
     # 3. Create active Graph state
     domain = "real_estate"
     if state_manager and hasattr(state_manager, "schema") and state_manager.schema:
-        domain = state_manager.schema.get("domain", "real_estate")
+        raw_d = state_manager.schema.get("domain") or state_manager.schema.get("agent_id") or ""
+        if raw_d in ("education", "education_counselling", "aarohi"):
+            domain = "education"
+    elif runtime_context and runtime_context.get("domain") in ("education", "education_counselling", "aarohi"):
+        domain = "education"
 
     graph_state = {
         "messages": messages,
@@ -862,7 +945,7 @@ async def generate_response(
             if state_manager:
                 global_prompt = getattr(state_manager, "global_prompt", "") or (state_manager.schema.get("global_prompt", "") if hasattr(state_manager, "schema") else "")
                 
-            combined = await generate_combined_intent_and_response(user_text, conversation_history or [], global_prompt)
+            combined = await generate_combined_intent_and_response(user_text, conversation_history or [], global_prompt, domain=domain)
             if combined and combined.spoken_reply_text and combined.spoken_reply_text != "Give me just one moment...":
                 # Sync back state
                 es = combined.intent_analysis.entities
@@ -884,7 +967,8 @@ async def generate_response(
                 if hasattr(state_manager, "record_response"):
                     state_manager.record_response(combined.spoken_reply_text)
                     
-                return combined.spoken_reply_text, (combined.intent_analysis.intent == "CLOSING")
+                safe_spoken = _check_and_fix_domain_leakage(combined.spoken_reply_text, domain=domain, language=language)
+                return safe_spoken, (combined.intent_analysis.intent == "CLOSING")
             else:
                 logger.info("Fast path JSON generation failed. Continuing with standard pipeline.")
 
@@ -937,6 +1021,7 @@ async def generate_response(
         if graph_state.get("_session_ended") or graph_state["current_node"] == "CLOSING":
             state_manager._session_ended = True
 
+    reply = _check_and_fix_domain_leakage(reply, domain=domain, language=language)
     is_terminal = (graph_state["current_node"] == "CLOSING") or bool(graph_state.get("_session_ended"))
     return reply, is_terminal
 

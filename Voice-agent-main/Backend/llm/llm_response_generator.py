@@ -218,8 +218,12 @@ def _answer_user_question(question_type: str, language: str, state_manager: Opti
     agent_type = "real_estate_sales"
     global_prompt = ""
     if state_manager:
-        agent_name = state_manager.schema.get("agent_name", "Agent")
-        agent_type = state_manager.schema.get("agent_metadata", {}).get("agent_type") or state_manager.schema.get("agent_type") or "real_estate_sales"
+        agent_name = state_manager.schema.get("agent_name", "Aarohi" if state_manager.schema.get("domain") == "education" else "Priya")
+        raw_d = state_manager.schema.get("domain") or state_manager.schema.get("agent_id") or ""
+        if raw_d in ("education", "education_counselling", "aarohi"):
+            agent_type = "education"
+        else:
+            agent_type = state_manager.schema.get("agent_metadata", {}).get("agent_type") or state_manager.schema.get("agent_type") or "real_estate_sales"
         global_prompt = (state_manager.global_prompt or state_manager.schema.get("global_prompt", "")) if hasattr(state_manager, "global_prompt") else state_manager.schema.get("global_prompt", "")
 
     type_label = {

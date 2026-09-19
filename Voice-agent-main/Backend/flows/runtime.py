@@ -132,7 +132,7 @@ class VoiceTurnState:
 class RealEstateLLMProcessor(FrameProcessor):
     """Turn user transcripts into LLM responses and manage node states with GenID sync."""
 
-    def __init__(self, turn_state: VoiceTurnState | None = None):
+    def __init__(self, turn_state: VoiceTurnState | None = None, schema_path: str | None = None, agent_id: str | None = None):
         super().__init__()
         self.turn_state = turn_state
         self.history: list[dict[str, str]] = []
@@ -141,7 +141,14 @@ class RealEstateLLMProcessor(FrameProcessor):
         self.last_user_text = ""
         self.last_user_at = 0.0
         self._booted = False
-        self.state_manager = StateManager(STATE_SCHEMA_PATH)
+        
+        if not schema_path and agent_id:
+            if agent_id in ("education_counselling", "education", "aarohi"):
+                schema_path = os.path.join(_ROOT, "Education_Counselling_Agent.json")
+            else:
+                schema_path = os.path.join(_ROOT, "Updated_Real_Estate_Agent.json")
+        schema_path = schema_path or STATE_SCHEMA_PATH
+        self.state_manager = StateManager(schema_path)
         self._current_gen_id = 0
         self._fallback_replies = [
             "Sorry, I didn't catch that clearly. Could you repeat that once?",

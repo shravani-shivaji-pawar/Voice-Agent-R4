@@ -27,8 +27,8 @@ async def run_benchmark():
     state_mgr = StateManager(schema_path)
     state_mgr.reset_state()
 
-    print(f"[CONFIG] VAD Trailing Silence MS: {stt_cfg.STT_TRAILING_SILENCE_MS}ms")
-    print(f"[CONFIG] Min Voice Start MS:      {stt_cfg.MIN_VOICE_START_MS}ms")
+    print(f"[CONFIG] VAD Trailing Silence MS: {getattr(stt_cfg, 'TRAILING_SILENCE_MS', 350)}ms")
+    print(f"[CONFIG] Min Voice Start MS:      {getattr(stt_cfg, 'MIN_VOICE_START_MS', 150)}ms")
 
     # 1. Preprocessing & Control Token Benchmark
     t0 = time.perf_counter()

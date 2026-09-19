@@ -40,7 +40,7 @@ MAX_HISTORY_MESSAGES: int = 10  # trimmed from 12 for faster context processing
 MAX_RESPONSE_SENTENCES: int = 2
 MAX_RESPONSE_WORDS: int = 25
 
-ENABLE_SINGLE_CALL_FAST_PATH: bool = False
+ENABLE_SINGLE_CALL_FAST_PATH: bool = True
 
 # Phrase-constrained LLM response composition
 PHRASE_RESPONSE_MAX_TOKENS: int = 120

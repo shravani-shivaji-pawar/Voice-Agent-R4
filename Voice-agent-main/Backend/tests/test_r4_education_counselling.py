@@ -128,6 +128,7 @@ def test_undecided_student_flow():
             "user_input": "I don't know what to study.",
             "language": "en",
             "extracted_slots": {},
+            "domain": "education",
             "current_node": "DISCOVERY"
         }
         updated = await handle_discovery(state)
@@ -201,6 +202,60 @@ def test_fees_anti_hallucination():
     asyncio.run(_impl())
 
 
+def test_exact_user_reported_failure_multi_turn():
+    """
+    TEST 13: Exact user reported failure sequence.
+    User: "I'm studying."
+    User: "I'm currently doing MCA."
+    User: "मुझे मेरी studies continue करनी है."
+    User: "Yes, I'm looking for PhD."
+    User: "Could you please tell me some topics for PhD?"
+    User: "No bro, what does your company do?"
+    User: "Amen"
+    User: "Who are you?"
+
+    ASSERT: At NO point does Aarohi claim to be a real estate advisor or mention Suncity, BHK, property, or site visits.
+    """
+    async def _impl():
+        from llm.llm import generate_response
+        from llm.state_manager import StateManager
+        import os
+
+        schema_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Education_Counselling_Agent.json")
+        sm = StateManager(schema_path)
+
+        conversation_history = []
+        user_utterances = [
+            "I'm studying.",
+            "I'm currently doing MCA.",
+            "मुझे मेरी studies continue करनी है.",
+            "Yes, I'm looking for PhD.",
+            "Could you please tell me some topics for PhD?",
+            "No bro, what does your company do?",
+            "Amen",
+            "Who are you?",
+            "Tell me some education options."
+        ]
+
+        forbidden_words = ["suncity", "bhk", "property", "properties", "site visit", "real estate", "real-estate advisor", "flat", "apartment", "priya"]
+
+        for user_text in user_utterances:
+            reply, is_terminal = await generate_response(
+                user_text=user_text,
+                conversation_history=conversation_history,
+                language="en",
+                state_manager=sm,
+                runtime_context={"domain": "education"}
+            )
+            
+            conversation_history.append({"role": "user", "content": user_text})
+            conversation_history.append({"role": "assistant", "content": reply})
+
+            reply_lower = reply.lower()
+            for forbidden in forbidden_words:
+                assert forbidden not in reply_lower, f"Forbidden Real Estate word '{forbidden}' leaked in turn '{user_text}': response = '{reply}'"
+
+    asyncio.run(_impl())
 
 
 if __name__ == "__main__":

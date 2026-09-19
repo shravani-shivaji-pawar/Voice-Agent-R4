@@ -1132,3 +1132,21 @@
 {"timestamp": 1789671756.4595003, "event": "OPEN_DOMAIN_DETOUR", "user_input": "I want a 2 BHK in Baner.", "language": "en", "return_node": "DISCOVERY", "slots": {"bhk": null, "location": null, "property_type": null, "preferred_bhk": null, "current_qualification": null, "preferred_course": null, "preferred_specialization": null, "preferred_city": null, "preferred_country": null, "study_abroad": null, "percentage": null, "budget_range": null, "budget": null, "entrance_exam": null, "career_goal": null, "user_name": null, "phone": null}}
 {"timestamp": 1789672284.0575156, "event": "OPEN_DOMAIN_DETOUR", "user_input": "I want a 2 BHK in Baner.", "language": "en", "return_node": "DISCOVERY", "slots": {"bhk": null, "location": null, "property_type": null, "preferred_bhk": null, "current_qualification": null, "preferred_course": null, "preferred_specialization": null, "preferred_city": null, "preferred_country": null, "study_abroad": null, "percentage": null, "budget_range": null, "budget": null, "entrance_exam": null, "career_goal": null, "user_name": null, "phone": null}}
 {"timestamp": 1789672483.6661196, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789742162.776792, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789742408.925714, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789828198.2647555, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789828772.7862465, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789831187.747723, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789831481.2423255, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789831553.3649087, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789834844.559199, "event": "OPEN_DOMAIN_DETOUR", "user_input": "\u0939\u093e\u0901, \u092e\u0941\u091d\u0947 \u092a\u094d\u0930\u0949\u092a\u0930\u094d\u091f\u0940 \u0916\u0930\u0940\u0926\u0928\u0940 \u0939\u0948.", "language": "hi", "return_node": "node-1767592854176", "slots": {"bhk": null, "location": null, "property_type": null, "preferred_bhk": null, "current_qualification": null, "preferred_course": null, "preferred_specialization": null, "preferred_city": null, "preferred_country": null, "study_abroad": null, "percentage": null, "budget_range": null, "budget": null, "entrance_exam": null, "career_goal": null, "user_name": null, "phone": null}, "domain": "real_estate"}
+{"timestamp": 1789835151.7765322, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789835212.0449858, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789835427.9799285, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789835612.5142348, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789835904.688326, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789836011.8091624, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789837053.5972478, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789837222.5274642, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789837440.136896, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789837472.0665555, "event": "call_started", "start_node": "node-1767592854176"}
