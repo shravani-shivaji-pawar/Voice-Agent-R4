@@ -33,7 +33,7 @@ SMALLEST_TTS_ENDPOINT = "https://api.smallest.ai/waves/v1/tts"
 SMALLEST_VOICES_ENDPOINT = "https://api.smallest.ai/waves/v1/get_voices"
 DEFAULT_MODEL = "lightning_v3.1"
 SAMPLE_RATE = 24_000
-CHUNK_BYTES = 2048
+CHUNK_BYTES = 1024
 
 SUPPORTED_MODELS = [
     {"id": "lightning_v3.1", "name": "Lightning v3.1", "description": "Ultra-low latency model for real-time voice agents"},
@@ -535,3 +535,17 @@ def generate_speech_stream(
         logger.error("[SmallestTTS] Request failed: %s", req_err)
     except Exception as exc:
         logger.error("[SmallestTTS] Unexpected synthesis error: %s", exc, exc_info=True)
+
+
+async def stream_smallest_tts(
+    text: str,
+    voice: str | None = None,
+    model: str | None = None,
+    language: str | None = None,
+):
+    """Async generator wrapper around generate_speech_stream for async contexts."""
+    import asyncio
+    for chunk in generate_speech_stream(text, preferred_language=language, speaker=voice, model=model):
+        yield chunk
+        await asyncio.sleep(0)
+

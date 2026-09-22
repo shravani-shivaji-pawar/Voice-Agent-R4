@@ -1,6 +1,7 @@
 """Runtime processors for the local voice pipeline."""
 
 import asyncio
+import random
 import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -9,6 +10,7 @@ import os
 import time
 import concurrent.futures
 import uuid
+from typing import Any, Dict, Optional, List
 
 import numpy as np
 import soundfile as sf
@@ -132,11 +134,40 @@ class VoiceTurnState:
 class RealEstateLLMProcessor(FrameProcessor):
     """Turn user transcripts into LLM responses and manage node states with GenID sync."""
 
-    def __init__(self, turn_state: VoiceTurnState | None = None, schema_path: str | None = None, agent_id: str | None = None):
+    def __init__(
+        self,
+        turn_state: VoiceTurnState | None = None,
+        schema_path: str | None = None,
+        agent_id: str | None = None,
+        agent_config: dict[str, Any] | None = None,
+    ):
         super().__init__()
         self.turn_state = turn_state
+        self.agent_config = agent_config or {}
+        self.agent_id = agent_id
+
+        # If agent_config not passed, attempt to load synchronously from DB
+        if not self.agent_config and self.agent_id:
+            try:
+                from db.db_manager import _get_connection
+                conn = _get_connection()
+                row = conn.execute("SELECT * FROM agents WHERE id=?", (self.agent_id,)).fetchone()
+                if row:
+                    self.agent_config = dict(row)
+                conn.close()
+            except Exception as _cfg_err:
+                logger.warning("[LLM PROCESSOR] Could not load agent config for %s: %s", self.agent_id, _cfg_err)
+
+        self.custom_system_prompt = self.agent_config.get("script") or self.agent_config.get("system_prompt")
+        self.custom_greeting = self.agent_config.get("greeting_response") or self.agent_config.get("greeting")
+        
+        if self.agent_config:
+            if self.custom_system_prompt and "system_prompt" not in self.agent_config:
+                self.agent_config["system_prompt"] = self.custom_system_prompt
+            if self.custom_greeting and "greeting_response" not in self.agent_config:
+                self.agent_config["greeting_response"] = self.custom_greeting
         self.history: list[dict[str, str]] = []
-        self.current_language = "en"
+        self.current_language = self.agent_config.get("language") or "en"
         self.language_tracker = LanguageTracker(initial_language=self.current_language)
         self.last_user_text = ""
         self.last_user_at = 0.0
@@ -145,8 +176,10 @@ class RealEstateLLMProcessor(FrameProcessor):
         if not schema_path and agent_id:
             if agent_id in ("education_counselling", "education", "aarohi"):
                 schema_path = os.path.join(_ROOT, "Education_Counselling_Agent.json")
-            else:
+            elif agent_id in ("real_estate", "real_estate_sales", "priya", "default"):
                 schema_path = os.path.join(_ROOT, "Updated_Real_Estate_Agent.json")
+            else:
+                schema_path = None
         schema_path = schema_path or STATE_SCHEMA_PATH
         self.state_manager = StateManager(schema_path)
         self._current_gen_id = 0
@@ -155,6 +188,7 @@ class RealEstateLLMProcessor(FrameProcessor):
             "I'm sorry, I missed that. Could you say it again?",
             "Apologies, my line dropped for a second. What was that?",
         ]
+
 
     async def process_frame(self, frame: Frame, direction: FrameDirection = None):  # type: ignore
         print("LLM RECEIVED:", type(frame), frame, direction)
@@ -197,23 +231,45 @@ class RealEstateLLMProcessor(FrameProcessor):
             await self.push_frame(frame, direction)
 
             logger.info("[PIPELINE] LLM -> Received StartFrame. Triggering initial greeting...")
-            try:
-                # 2. CIRCUIT BREAKER (Timeout) — allow 8s for two sequential LLM calls
-                result = await asyncio.wait_for(generate_response(
-                    user_text=CALL_CONNECTED_TRIGGER,
-                    conversation_history=self.history,
-                    language=self.current_language,
-                    state_manager=self.state_manager,
-                    allow_transition=False,
-                ), timeout=8.0)
-                # generate_response returns (reply_text, is_terminal) tuple
-                if isinstance(result, tuple):
-                    reply = result[0]
-                else:
-                    reply = result
-            except BaseException as exc:
-                logger.warning("[PIPELINE] LLM -> Start greeting fallback due to error: %s", exc)
-                reply = "Hello, how can I help you today?"
+            reply = None
+            if self.custom_greeting:
+                reply = self.custom_greeting
+            elif self.custom_system_prompt:
+                from llm.llm import generate_voice_response
+                try:
+                    reply = await asyncio.wait_for(
+                        generate_voice_response(
+                            prompt="Generate initial greeting for call connection.",
+                            history=[],
+                            language=self.current_language,
+                            is_greeting=True,
+                            domain=self.agent_config.get("agent_type", "custom"),
+                            system_prompt_override=self.custom_system_prompt,
+                        ),
+                        timeout=5.0
+                    )
+                except Exception as exc:
+                    logger.warning("[PIPELINE] LLM -> Dynamic start greeting failed: %s", exc)
+                    agent_name = self.agent_config.get("agent_name", "your assistant")
+                    reply = f"Hello, I am {agent_name}. How can I help you today?"
+            else:
+                try:
+                    # 2. CIRCUIT BREAKER (Timeout) — allow 8s for two sequential LLM calls
+                    result = await asyncio.wait_for(generate_response(
+                        user_text=CALL_CONNECTED_TRIGGER,
+                        conversation_history=self.history,
+                        language=self.current_language,
+                        state_manager=self.state_manager,
+                        allow_transition=False,
+                    ), timeout=8.0)
+                    # generate_response returns (reply_text, is_terminal) tuple
+                    if isinstance(result, tuple):
+                        reply = result[0]
+                    else:
+                        reply = result
+                except BaseException as exc:
+                    logger.warning("[PIPELINE] LLM -> Start greeting fallback due to error: %s", exc)
+                    reply = "Hello, how can I help you today?"
 
             if reply:
                 self.history.append({"role": "assistant", "content": reply})
@@ -329,13 +385,32 @@ class RealEstateLLMProcessor(FrameProcessor):
         llm_failed = False
         is_terminal = False
         try:
-            # 2. CIRCUIT BREAKER (Timeout) — 10s for two sequential LLM calls (intent + voice)
-            reply, is_terminal = await asyncio.wait_for(generate_response(
-                user_text,
-                self.history,
-                self.current_language,
-                state_manager=self.state_manager
-            ), timeout=10.0)
+            if self.custom_system_prompt:
+                from llm.llm import generate_combined_intent_and_response
+                domain = self.agent_config.get("agent_type", "custom")
+                analysis = await asyncio.wait_for(
+                    generate_combined_intent_and_response(
+                        user_input=user_text,
+                        history=self.history,
+                        domain=domain,
+                        system_prompt=self.custom_system_prompt
+                    ),
+                    timeout=10.0
+                )
+                if isinstance(analysis, dict):
+                    reply = analysis.get("response") or analysis.get("reply") or analysis.get("spoken_reply_text") or "How can I assist you today?"
+                    is_terminal = (analysis.get("intent") == "CLOSING" or bool(analysis.get("is_terminal")))
+                else:
+                    reply = getattr(analysis, "spoken_reply_text", None) or getattr(analysis, "response", "How can I assist you today?")
+                    is_terminal = (getattr(getattr(analysis, "intent_analysis", None), "intent", None) == "CLOSING")
+            else:
+                # 2. CIRCUIT BREAKER (Timeout) — 10s for two sequential LLM calls (intent + voice)
+                reply, is_terminal = await asyncio.wait_for(generate_response(
+                    user_text,
+                    self.history,
+                    self.current_language,
+                    state_manager=self.state_manager
+                ), timeout=10.0)
         except asyncio.TimeoutError:
             logger.warning("LLM Timeout — emitting system busy signal.")
             llm_failed = True

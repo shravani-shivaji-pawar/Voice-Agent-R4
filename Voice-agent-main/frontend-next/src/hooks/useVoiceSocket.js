@@ -204,8 +204,6 @@ export function useVoiceSocket(agentId, activeClient, defaultLanguage = 'en') {
 
       socket.onopen = async () => {
         console.log("[WS] Connected to", wsUrl);
-        setIsConnected(true);
-        setStatusText('🔴 Listening — speak now');
         
         if (ctx && ctx.state === "suspended") {
           ctx.resume().then(() => {
@@ -220,90 +218,102 @@ export function useVoiceSocket(agentId, activeClient, defaultLanguage = 'en') {
           setEvents([]);
         }
 
-        const mic = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-        });
-        micStreamRef.current = mic;
-        
-        const source = ctx.createMediaStreamSource(mic);
-        
-        // Handshake: Tell server we are sending exactly 16kHz audio
-        socket.send(JSON.stringify({ type: 'mic_ready', sampleRate: 16000 }));
-        
-        if (workletLoaded) {
-          const workletNode = new AudioWorkletNode(ctx, 'mic-capture-processor');
-          const silentGain = ctx.createGain();
-          silentGain.gain.value = 0;
-          source.connect(workletNode);
-          workletNode.connect(silentGain);
-          silentGain.connect(ctx.destination);
-          micWorkletNodeRef.current = workletNode;
-          micSilentGainRef.current = silentGain;
-          workletNode.port.onmessage = (e) => {
-            if (isMicInputBlocked()) return;
-            if (wsRef.current?.readyState === WebSocket.OPEN) {
-              logMicChunkStats(e.data);
-              wsRef.current.send(toPcm16Buffer(e.data));
-            }
-          };
-        } else {
-          // Fallback if worklet failed
-          const processor = ctx.createScriptProcessor(2048, 1, 1);
-          const silentGain = ctx.createGain();
-          silentGain.gain.value = 0;
-          source.connect(processor);
-          processor.connect(silentGain);
-          silentGain.connect(ctx.destination);
-
-          let buffer = [];
-          let inputPointer = 0;
-          const ratio = ctx.sampleRate / 16000;
-
-          processor.onaudioprocess = (e) => {
-            if (isMicInputBlocked()) return;
-            const inp = e.inputBuffer.getChannelData(0);
-            for (let i = 0; i < inp.length; i++) {
-              buffer.push(inp[i]);
-            }
-            
-            const outputSamples = [];
-            while (inputPointer < buffer.length) {
-              const index = Math.floor(inputPointer);
-              const nextIndex = index + 1;
-              const frac = inputPointer - index;
-              
-              const s0 = buffer[index];
-              const s1 = nextIndex < buffer.length ? buffer[nextIndex] : s0;
-              const interpolated = s0 + frac * (s1 - s0);
-              outputSamples.push(interpolated);
-              inputPointer += ratio;
-            }
-            
-            const consumed = Math.floor(inputPointer);
-            if (consumed > 0) {
-              buffer = buffer.slice(consumed);
-              inputPointer -= consumed;
-            }
-
-            if (outputSamples.length > 0) {
-              const i16 = new Int16Array(outputSamples.length);
-              for (let j = 0; j < outputSamples.length; j++) {
-                const s = Math.max(-1, Math.min(1, outputSamples[j]));
-                i16[j] = s < 0 ? s * 32768 : s * 32767;
-              }
-              logMicChunkStats(i16.buffer);
+        try {
+          const mic = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+          });
+          micStreamRef.current = mic;
+          
+          setIsConnected(true);
+          setStatusText('🔴 Listening — speak now');
+          
+          const source = ctx.createMediaStreamSource(mic);
+          
+          // Handshake: Tell server we are sending exactly 16kHz audio
+          socket.send(JSON.stringify({ type: 'mic_ready', sampleRate: 16000 }));
+          
+          if (workletLoaded) {
+            const workletNode = new AudioWorkletNode(ctx, 'mic-capture-processor');
+            const silentGain = ctx.createGain();
+            silentGain.gain.value = 0;
+            source.connect(workletNode);
+            workletNode.connect(silentGain);
+            silentGain.connect(ctx.destination);
+            micWorkletNodeRef.current = workletNode;
+            micSilentGainRef.current = silentGain;
+            workletNode.port.onmessage = (e) => {
+              if (isMicInputBlocked()) return;
               if (wsRef.current?.readyState === WebSocket.OPEN) {
-                wsRef.current.send(i16.buffer);
+                logMicChunkStats(e.data);
+                wsRef.current.send(toPcm16Buffer(e.data));
               }
-            }
-          };
-        }
+            };
+          } else {
+            // Fallback if worklet failed
+            const processor = ctx.createScriptProcessor(2048, 1, 1);
+            const silentGain = ctx.createGain();
+            silentGain.gain.value = 0;
+            source.connect(processor);
+            processor.connect(silentGain);
+            silentGain.connect(ctx.destination);
 
-        pingIntervalRef.current = setInterval(() => {
-          if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: 'ping' }));
+            let buffer = [];
+            let inputPointer = 0;
+            const ratio = ctx.sampleRate / 16000;
+
+            processor.onaudioprocess = (e) => {
+              if (isMicInputBlocked()) return;
+              const inp = e.inputBuffer.getChannelData(0);
+              for (let i = 0; i < inp.length; i++) {
+                buffer.push(inp[i]);
+              }
+              
+              const outputSamples = [];
+              while (inputPointer < buffer.length) {
+                const index = Math.floor(inputPointer);
+                const nextIndex = index + 1;
+                const frac = inputPointer - index;
+                
+                const s0 = buffer[index];
+                const s1 = nextIndex < buffer.length ? buffer[nextIndex] : s0;
+                const interpolated = s0 + frac * (s1 - s0);
+                outputSamples.push(interpolated);
+                inputPointer += ratio;
+              }
+              
+              const consumed = Math.floor(inputPointer);
+              if (consumed > 0) {
+                buffer = buffer.slice(consumed);
+                inputPointer -= consumed;
+              }
+
+              if (outputSamples.length > 0) {
+                const i16 = new Int16Array(outputSamples.length);
+                for (let j = 0; j < outputSamples.length; j++) {
+                  const s = Math.max(-1, Math.min(1, outputSamples[j]));
+                  i16[j] = s < 0 ? s * 32768 : s * 32767;
+                }
+                logMicChunkStats(i16.buffer);
+                if (wsRef.current?.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(i16.buffer);
+                }
+              }
+            };
           }
-        }, 5000);
+
+          pingIntervalRef.current = setInterval(() => {
+            if (wsRef.current?.readyState === WebSocket.OPEN) {
+              wsRef.current.send(JSON.stringify({ type: 'ping' }));
+            }
+          }, 5000);
+        } catch (micErr) {
+          console.error("[VOICE] Microphone initialization failed:", micErr);
+          setStatusText('⚠️ Mic access denied or not found');
+          setIsConnected(false);
+          if (wsRef.current) {
+            wsRef.current.close();
+          }
+        }
       };
 
       socket.onmessage = (e) => {

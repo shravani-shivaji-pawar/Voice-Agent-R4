@@ -1,0 +1,82 @@
+{
+    "agent_name": "Education Counselling - Default Voice",
+    "voice_id": "shreya",
+    "conversation_flow_id": "flow_ea8f8cbd",
+    "global_prompt": "Create an education counselling voice agent named Aarohi for a university. It should answer questions about MCA, MBA, fees, entrance exams, and transfer difficult cases to a human counsellor.",
+    "conversationFlow": {
+        "global_prompt": "Create an education counselling voice agent named Aarohi for a university. It should answer questions about MCA, MBA, fees, entrance exams, and transfer difficult cases to a human counsellor.",
+        "start_node_id": "root_greeting",
+        "nodes": [
+            {
+                "id": "root_greeting",
+                "name": "Initial Greeting",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "Greet the user warmly as Education Counselling - Default Voice and confirm identity using the lead name."
+                },
+                "response": "Hello, this is Education Counselling - Default Voice from the Education counselling team. Am I speaking with {{name}}?",
+                "intent_triggers": [
+                    "call_connected"
+                ],
+                "edges": [
+                    {
+                        "id": "to_discovery",
+                        "condition": "user responds",
+                        "destination_node_id": "discovery"
+                    }
+                ]
+            },
+            {
+                "id": "discovery",
+                "name": "Information Discovery",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "Qualify lead interest and collect data fields."
+                },
+                "response": "I'm calling about some premium property options. Would you have a moment?",
+                "collects": [
+                    "interested",
+                    "course_interest",
+                    "education_level",
+                    "city",
+                    "budget",
+                    "callback"
+                ],
+                "edges": [
+                    {
+                        "id": "to_end",
+                        "condition": "conversation finished",
+                        "destination_node_id": "end_node"
+                    }
+                ]
+            },
+            {
+                "id": "end_node",
+                "name": "Conclusion",
+                "type": "end",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "End the call politely."
+                },
+                "response": "Thank you for your time. Have a great day!"
+            }
+        ]
+    },
+    "tts_provider": "smallest",
+    "stt_provider": "groq",
+    "smallest_model": "lightning_v3.1",
+    "provider_config": {
+        "stt_provider": "groq",
+        "tts_provider": "smallest",
+        "cartesia_voice_id": "95d51f79-c397-46f9-b49a-23763d3eaa2d",
+        "smallest_model": "lightning_v3.1",
+        "parler_description": ""
+    },
+    "agent_metadata": {
+        "agent_type": "education",
+        "assigned_email": "shravani772004@gmail.com",
+        "client_id": "user-8ff689a72f52"
+    }
+}

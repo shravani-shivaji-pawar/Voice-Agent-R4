@@ -20,11 +20,9 @@ GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 
 # ── Model ──────────────────────────────────────────────────────────────────────
 # Active default models (fastest, low-latency for voice turns):
-#   "groq/compound-mini"     - Groq's active fast mini model
-#   "gpt-4o-mini"            - OpenAI's smallest fast model (when OPENAI_API_KEY is active)
-MODEL_NAME: str = os.getenv("LLM_MODEL", "llama-3.1-8b-instant")
-FAST_MODEL_NAME: str = os.getenv("LLM_FAST_MODEL", "llama-3.1-8b-instant")
-VERSATILE_MODEL_NAME: str = os.getenv("LLM_VERSATILE_MODEL", "llama-3.1-8b-instant")
+MODEL_NAME: str = os.getenv("LLM_MODEL", "qwen/qwen3.8-27b")
+FAST_MODEL_NAME: str = os.getenv("LLM_FAST_MODEL", "qwen/qwen3.8-27b")
+VERSATILE_MODEL_NAME: str = os.getenv("LLM_VERSATILE_MODEL", "qwen/qwen3.8-27b")
 
 # ── Generation Parameters ──────────────────────────────────────────────────────
 TEMPERATURE: float = 0.35      # balanced: not robotic (0.0) but not hallucinating (>0.7)

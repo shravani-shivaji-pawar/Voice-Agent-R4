@@ -18,7 +18,7 @@ import urllib.request
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PROVIDER = "groq"
+DEFAULT_PROVIDER = "smallest"
 SUPPORTED_PROVIDERS = {"groq", "deepgram", "indic_seamless", "smallest"}
 _AGENT_CONFIG_CACHE: dict[str, tuple[float, str | None]] = {}
 _AGENT_SCHEMA_DIR = Path(__file__).resolve().parent.parent / "db" / "agents"

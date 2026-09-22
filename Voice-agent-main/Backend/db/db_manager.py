@@ -536,8 +536,9 @@ def _init_schema() -> None:
         except sqlite3.OperationalError:
             pass
         try:
-            conn.execute("ALTER TABLE agents ADD COLUMN agent_type TEXT DEFAULT 'real_estate_sales'")
-        except Exception:
+            conn.execute("ALTER TABLE agents ADD COLUMN greeting_response TEXT")
+        except sqlite3.OperationalError:
+            pass
             pass
         try:
             conn.execute("ALTER TABLE agents ADD COLUMN certification_status TEXT DEFAULT 'Draft'")
@@ -576,10 +577,63 @@ def _init_schema() -> None:
             pass
         _ensure_tenant_indexes(conn)
         _backfill_client_ids(conn)
+        _seed_builtin_agents(conn)
         conn.commit()
         logger.info("DB schema initialized at %s", DB_PATH)
     finally:
         conn.close()
+
+
+def _seed_builtin_agents(conn: sqlite3.Connection) -> None:
+    """Seed initial test agents (Education Counsellor - Aarohi & SunCity Real Estate Advisor - Priya)."""
+    builtin_agents = [
+        {
+            "id": "education",
+            "name": "Education Counsellor - Aarohi",
+            "voice": "emily",
+            "language": "Multi (English, Hindi, Hinglish)",
+            "max_duration": 300,
+            "provider": "Smallest AI / Groq",
+            "stt_provider": "smallest",
+            "tts_provider": "smallest",
+            "agent_type": "education",
+            "script": "You are Education Counsellor - Aarohi, an AI counsellor guiding students on courses, colleges, entrance exams, and study abroad options. Be warm, supportive, and helpful.",
+            "data_fields": json.dumps(["Current Qualification", "Preferred Course", "Preferred City", "Budget"]),
+            "certification_status": "Certified",
+            "qa_score": 98
+        },
+        {
+            "id": "real_estate",
+            "name": "SunCity Real Estate Advisor - Priya",
+            "voice": "emily",
+            "language": "Multi (English, Hinglish, Marathi)",
+            "max_duration": 300,
+            "provider": "Smallest AI / Groq",
+            "stt_provider": "smallest",
+            "tts_provider": "smallest",
+            "agent_type": "real_estate_sales",
+            "script": "You are Priya, a senior property consultant at SunCity Real Estate. Assist clients with luxury apartments, property inquiries, pricing, locations, and booking site visits.",
+            "data_fields": json.dumps(["Name", "Location", "Budget", "Property Type", "Interested"]),
+            "certification_status": "Certified",
+            "qa_score": 95
+        }
+    ]
+
+    for agent in builtin_agents:
+        conn.execute(
+            """INSERT OR IGNORE INTO agents (
+                id, name, voice, language, max_duration, provider,
+                stt_provider, tts_provider, agent_type, script,
+                data_fields, certification_status, qa_score, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+            (
+                agent["id"], agent["name"], agent["voice"], agent["language"],
+                agent["max_duration"], agent["provider"], agent["stt_provider"],
+                agent["tts_provider"], agent["agent_type"], agent["script"],
+                agent["data_fields"], agent["certification_status"], agent["qa_score"]
+            )
+        )
+
 
 
 def _ensure_tenant_indexes(conn: sqlite3.Connection) -> None:
@@ -1307,7 +1361,8 @@ class DatabaseManager:
                         """SELECT a.*, c.name as client_name 
                            FROM agents a 
                            LEFT JOIN clients c ON a.client_id = c.id 
-                           WHERE a.client_id=? ORDER BY a.created_at DESC""",
+                           WHERE a.client_id=? OR a.client_id IS NULL OR a.id IN ('education', 'education_counselling', 'real_estate', 'real_estate_sales')
+                           ORDER BY a.created_at DESC""",
                         (client_id,)
                     ).fetchall()
                 else:
@@ -1318,8 +1373,13 @@ class DatabaseManager:
                            ORDER BY a.created_at DESC"""
                     ).fetchall()
                 result = []
+                seen_ids = set()
                 for r in rows:
                     d = dict(r)
+                    agent_id_val = d.get("id")
+                    if agent_id_val in seen_ids:
+                        continue
+                    seen_ids.add(agent_id_val)
                     d["data_fields"] = json.loads(d.get("data_fields") or "[]")
                     result.append(d)
                 return result
@@ -1327,29 +1387,47 @@ class DatabaseManager:
                 conn.close()
         return await run_in_executor(_sync)
 
+    async def save_agent(self, data: dict) -> dict:
+        agent_id = data.get("id") or data.get("agent_id") or f"agent-{uuid.uuid4().hex[:8]}"
+        existing = await self.get_agent(agent_id)
+        if existing:
+            updated = await self.update_agent(agent_id, data)
+            return updated or {**data, "id": agent_id}
+        else:
+            return await self.create_agent(agent_id, data)
+
     async def create_agent(self, agent_id: str, data: dict) -> dict:
         def _sync():
             conn = _get_connection()
             try:
+                name_val = data.get("name") or data.get("agent_name") or "Unnamed Agent"
+                script_val = data.get("script") or data.get("system_prompt")
+                client_id_val = data.get("client_id")
+                if client_id_val:
+                    cur = conn.execute("SELECT id FROM clients WHERE id=?", (client_id_val,))
+                    if not cur.fetchone():
+                        client_id_val = None
+
                 conn.execute(
-                    """INSERT INTO agents (id, name, voice, language, max_duration, provider, stt_provider, tts_provider, cartesia_voice_id, parler_description, assigned_email, agent_type, script, data_fields, schema_path, client_id, certification_status, qa_score, last_qa_report, created_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    """INSERT INTO agents (id, name, voice, language, max_duration, provider, stt_provider, tts_provider, cartesia_voice_id, parler_description, assigned_email, agent_type, script, greeting_response, data_fields, schema_path, client_id, certification_status, qa_score, last_qa_report, created_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
-                        agent_id, data.get("name"), data.get("voice"),
+                        agent_id, name_val, data.get("voice") or data.get("smallest_voice"),
                         data.get("language", "en"), data.get("max_duration", 300),
-                        data.get("provider"), data.get("stt_provider", "groq"),
-                        data.get("tts_provider", "edge"), data.get("cartesia_voice_id"),
+                        data.get("provider"), data.get("stt_provider", "smallest"),
+                        data.get("tts_provider", "smallest"), data.get("cartesia_voice_id"),
                         data.get("parler_description"), data.get("assigned_email"),
-                        data.get("agent_type", "real_estate_sales"), data.get("script"),
+                        data.get("agent_type", "real_estate_sales"), script_val,
+                        data.get("greeting_response") or data.get("greeting"),
                         json.dumps(data.get("data_fields", [])),
-                        data.get("schema_path"), data.get("client_id"),
+                        data.get("schema_path"), client_id_val,
                         data.get("certification_status", "Draft"), data.get("qa_score"),
                         json.dumps(data.get("last_qa_report")) if data.get("last_qa_report") else None,
                         datetime.now().isoformat(),
                     )
                 )
                 conn.commit()
-                return {**data, "id": agent_id}
+                return {**data, "id": agent_id, "name": name_val}
             finally:
                 conn.close()
         return await run_in_executor(_sync)
@@ -1358,7 +1436,19 @@ class DatabaseManager:
         def _sync():
             conn = _get_connection()
             try:
-                row = conn.execute("SELECT * FROM agents WHERE id=?", (agent_id,)).fetchone()
+                alias_map = {
+                    "education": ["education", "education_counselling"],
+                    "education_counselling": ["education_counselling", "education"],
+                    "real_estate": ["real_estate", "real_estate_sales", "default"],
+                    "real_estate_sales": ["real_estate_sales", "real_estate", "default"],
+                    "default": ["default", "real_estate_sales", "real_estate"]
+                }
+                candidates = alias_map.get(agent_id, [agent_id])
+                row = None
+                for cid in candidates:
+                    row = conn.execute("SELECT * FROM agents WHERE id=?", (cid,)).fetchone()
+                    if row:
+                        break
                 if not row:
                     return None
                 data = dict(row)
@@ -1381,8 +1471,8 @@ class DatabaseManager:
                        SET name=?, voice=?, language=?, max_duration=?, provider=?,
                            stt_provider=?, tts_provider=?, cartesia_voice_id=?,
                            parler_description=?, assigned_email=?, agent_type=?, script=?,
-                           data_fields=?, schema_path=?, client_id=?, certification_status=?,
-                           qa_score=?, last_qa_report=?
+                           greeting_response=?, data_fields=?, schema_path=?, client_id=?,
+                           certification_status=?, qa_score=?, last_qa_report=?
                        WHERE id=?""",
                     (
                         data.get("name"),
@@ -1397,6 +1487,7 @@ class DatabaseManager:
                         data.get("assigned_email"),
                         data.get("agent_type", "real_estate_sales"),
                         data.get("script"),
+                        data.get("greeting_response") or data.get("greeting"),
                         json.dumps(data.get("data_fields", [])),
                         data.get("schema_path"),
                         data.get("client_id"),
@@ -1415,6 +1506,57 @@ class DatabaseManager:
             finally:
                 conn.close()
         return await run_in_executor(_sync)
+
+    async def duplicate_agent(self, agent_id: str, new_name: Optional[str] = None, client_id: Optional[str] = None) -> Optional[dict]:
+        existing = await self.get_agent(agent_id)
+        if not existing:
+            return None
+        new_id = f"agent-{uuid.uuid4().hex[:12]}"
+        cloned_data = {
+            **existing,
+            "id": new_id,
+            "name": new_name or f"{existing.get('name', 'Agent')} (Copy)",
+            "client_id": client_id or existing.get("client_id"),
+            "certification_status": "Draft",
+        }
+        return await self.create_agent(new_id, cloned_data)
+
+    async def delete_agent(self, agent_id: str) -> bool:
+        def _sync():
+            conn = _get_connection()
+            try:
+                cur = conn.execute("DELETE FROM agents WHERE id=?", (agent_id,))
+                conn.commit()
+                return cur.rowcount > 0
+            finally:
+                conn.close()
+        return await run_in_executor(_sync)
+
+    async def list_agent_calls(self, agent_id: str, limit: int = 50) -> list[dict]:
+        def _sync():
+            conn = _get_connection()
+            try:
+                rows = conn.execute(
+                    """SELECT cr.*, c.name as campaign_name 
+                       FROM call_results cr
+                       LEFT JOIN campaigns c ON cr.campaign_id = c.id
+                       WHERE c.agent_id=? OR cr.lead_id LIKE ?
+                       ORDER BY cr.called_at DESC LIMIT ?""",
+                    (agent_id, f"%{agent_id}%", limit)
+                ).fetchall()
+                res = []
+                for r in rows:
+                    d = dict(r)
+                    try:
+                        d["transcription"] = json.loads(d.get("transcription") or "[]")
+                    except Exception:
+                        d["transcription"] = []
+                    res.append(d)
+                return res
+            finally:
+                conn.close()
+        return await run_in_executor(_sync)
+
 
     # ── Campaigns ────────────────────────────────────────────────────────────
 
@@ -4844,3 +4986,7 @@ class DatabaseManager:
 
 # Singleton instance
 db = DatabaseManager()
+try:
+    _init_schema()
+except Exception as _e:
+    logger.warning("Auto schema init on import: %s", _e)

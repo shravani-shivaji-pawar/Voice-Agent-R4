@@ -1150,3 +1150,43 @@
 {"timestamp": 1789837222.5274642, "event": "call_started", "start_node": "node-1767592854176"}
 {"timestamp": 1789837440.136896, "event": "call_started", "start_node": "node-1767592854176"}
 {"timestamp": 1789837472.0665555, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789977834.9843376, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789977879.1185737, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789977899.609224, "event": "OPEN_DOMAIN_DETOUR", "user_input": "OK, so I'm looking to buy a property.", "language": "en", "return_node": "DISCOVERY", "slots": {"bhk": null, "location": null, "property_type": null, "preferred_bhk": null, "current_qualification": null, "preferred_course": null, "preferred_specialization": null, "preferred_city": null, "preferred_country": null, "study_abroad": null, "percentage": null, "budget_range": null, "budget": null, "entrance_exam": null, "career_goal": null, "user_name": null, "phone": null}, "domain": "real_estate"}
+{"timestamp": 1789977916.336263, "event": "OPEN_DOMAIN_DETOUR", "user_input": "As an investment.", "language": "en", "return_node": "DISCOVERY", "slots": {"bhk": null, "location": null, "property_type": null, "preferred_bhk": null, "current_qualification": null, "preferred_course": null, "preferred_specialization": null, "preferred_city": null, "preferred_country": null, "study_abroad": null, "percentage": null, "budget_range": null, "budget": null, "entrance_exam": null, "career_goal": null, "user_name": null, "phone": null}, "domain": "real_estate"}
+{"timestamp": 1789978045.4794922, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1789978269.1844718, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789980734.3953366, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789982621.1347558, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789982870.7296886, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789986203.55587, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789986226.2299874, "event": "OPEN_DOMAIN_DETOUR", "user_input": "Is it audible?", "language": "en", "return_node": "DISCOVERY", "slots": {"bhk": null, "location": null, "property_type": null, "preferred_bhk": null, "current_qualification": null, "preferred_course": null, "preferred_specialization": null, "preferred_city": null, "preferred_country": null, "study_abroad": null, "percentage": null, "budget_range": null, "budget": null, "entrance_exam": null, "career_goal": null, "user_name": null, "phone": null}, "domain": "real_estate"}
+{"timestamp": 1789986263.2399328, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1789986333.4625864, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790020362.7834437, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790020544.2704449, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790020740.424025, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790020873.3463655, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790020912.63023, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790021328.746094, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790067763.1058815, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790067831.6372108, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790068034.9859207, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790074039.3144197, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790075020.4681098, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790075035.5400407, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790075114.6738627, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790075114.693524, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790076359.8452523, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790076431.1792884, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790076676.7140946, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790076686.8587306, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790076877.938408, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790089574.3401828, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790089602.7537622, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790089832.7288034, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790092314.5574055, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790092554.739207, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790092656.7780893, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790092735.4786806, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790098454.7255058, "event": "call_started", "start_node": "node-1767592854176"}

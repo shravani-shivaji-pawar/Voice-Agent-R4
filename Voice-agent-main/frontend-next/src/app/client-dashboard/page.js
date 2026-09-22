@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
+import AgentBuilderModal from '@/components/AgentBuilderModal';
 import { useAuth, clientProfile } from '@/context/AuthContext';
 import { getProviderLabel } from '@/lib/providerDisplay';
 
@@ -127,6 +128,7 @@ export default function ClientDashboard() {
   // Domain Marketplace State
   const [domains, setDomains] = useState([]);
   const [domainsLoading, setDomainsLoading] = useState(true);
+  const [showPromptBuilder, setShowPromptBuilder] = useState(false);
 
   // Carousel State & Navigation
   const carouselRef = useRef(null);
@@ -547,23 +549,32 @@ export default function ClientDashboard() {
   return (
     <DashboardLayout>
       {/* HEADER SECTION */}
-      <div className="d-flex justify-content-between align-items-center mb-4">
+      <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
         <div>
-          <h2 className="h4 fw-bold mb-1">Marketplace Dashboard</h2>
+          <h2 className="h4 fw-bold mb-1">Voice Agent Dashboard</h2>
           <p className="text-muted small mb-0">Welcome back, {profile?.name || user?.name}</p>
         </div>
-        {availableAgents.length > 0 && (
+        <div style={{ display: 'flex', gap: '10px' }}>
           <button
-            className="btn btn-primary px-4 fw-semibold shadow-sm rounded-3"
-            onClick={() => {
-              setNotice(null);
-              setShowLaunchModal(true);
-            }}
-            disabled={loading}
+            className="btn btn-primary px-3 fw-semibold shadow-sm rounded-3 d-flex align-items-center gap-2"
+            style={{ background: '#3b82f6', borderColor: '#3b82f6' }}
+            onClick={() => setShowPromptBuilder(true)}
           >
-            {loading ? 'Launching...' : 'Launch Campaign'}
+            ✨ Create Voice Agent
           </button>
-        )}
+          {availableAgents.length > 0 && (
+            <button
+              className="btn btn-outline-light px-4 fw-semibold shadow-sm rounded-3"
+              onClick={() => {
+                setNotice(null);
+                setShowLaunchModal(true);
+              }}
+              disabled={loading}
+            >
+              {loading ? 'Launching...' : 'Launch Campaign'}
+            </button>
+          )}
+        </div>
       </div>
 
       {notice && (
@@ -1121,6 +1132,18 @@ export default function ClientDashboard() {
           </div>
         </div>
       )}
+
+      {/* Prompt-First Natural Language Agent Builder Modal */}
+      <AgentBuilderModal
+        isOpen={showPromptBuilder}
+        onClose={() => setShowPromptBuilder(false)}
+        onAgentGenerated={(newAgent) => {
+          loadRecentActivity();
+          if (newAgent?.id) {
+            window.location.href = `/agents/${newAgent.id}`;
+          }
+        }}
+      />
     </DashboardLayout>
   );
 }

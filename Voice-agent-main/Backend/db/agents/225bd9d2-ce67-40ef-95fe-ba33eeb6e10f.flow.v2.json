@@ -1,8 +1,8 @@
 {
   "schema_version": "2.0",
-  "id": "flowv2_0f9f9b77fa79",
-  "agent_id": "education_counselling",
-  "agent_name": "Aarohi \u2014 Education Counselling Specialist",
+  "id": "flowv2_d6be3f397c6f",
+  "agent_id": "225bd9d2-ce67-40ef-95fe-ba33eeb6e10f",
+  "agent_name": "Education Counselling - Default Voice",
   "agent_type": "education",
   "status": "draft",
   "runtime_mode": "shadow",
@@ -13,8 +13,39 @@
     "mr"
   ],
   "start_node_id": "start",
-  "global_prompt": "You are Aarohi, an AI Education Counsellor guiding students on courses, colleges, entrance exams, and study abroad options.",
-  "slots": [],
+  "global_prompt": "Create an education counselling voice agent named Aarohi for a university. It should answer questions about MCA, MBA, fees, entrance exams, and transfer difficult cases to a human counsellor.",
+  "slots": [
+    {
+      "id": "interested",
+      "required": true,
+      "source": "conversation"
+    },
+    {
+      "id": "course_interest",
+      "required": true,
+      "source": "conversation"
+    },
+    {
+      "id": "education_level",
+      "required": true,
+      "source": "conversation"
+    },
+    {
+      "id": "city",
+      "required": true,
+      "source": "conversation"
+    },
+    {
+      "id": "budget",
+      "required": true,
+      "source": "conversation"
+    },
+    {
+      "id": "callback",
+      "required": true,
+      "source": "conversation"
+    }
+  ],
   "intents": [
     {
       "id": "confirm",
@@ -51,7 +82,7 @@
       "type": "message",
       "label": "Greeting",
       "response": {
-        "en": "Hello, this is Aarohi \u2014 Education Counselling Specialist. Am I speaking with {{name}}?"
+        "en": "Hello, this is Education Counselling - Default Voice. Am I speaking with {{name}}?"
       },
       "transitions": [
         {
@@ -72,7 +103,14 @@
       "id": "discovery",
       "type": "slot_collection",
       "label": "Discovery",
-      "collects": [],
+      "collects": [
+        "interested",
+        "course_interest",
+        "education_level",
+        "city",
+        "budget",
+        "callback"
+      ],
       "response": {
         "en": "Could you share a little about what you are looking for?"
       },
@@ -151,7 +189,7 @@
   ],
   "metadata": {
     "source": "agent_metadata",
-    "source_language": "Hindi",
+    "source_language": "English",
     "validation_required": true
   },
   "validation": {

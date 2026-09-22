@@ -41,8 +41,12 @@ export default function DashboardLayout({ children }) {
 
   const clientMenu = [
     { label: 'Dashboard', path: '/client-dashboard', icon: <Home size={18} strokeWidth={1.5} /> },
-    { label: 'Demo Campaign', path: '/demo', icon: <PlaySquare size={18} strokeWidth={1.5} /> },
-    { label: 'Call Results', path: '/results', icon: <BarChart3 size={18} strokeWidth={1.5} /> }
+    { label: 'Voice Agents', path: '/agents', icon: <Bot size={18} strokeWidth={1.5} /> },
+    { label: 'Playground', path: '/demo', icon: <PlaySquare size={18} strokeWidth={1.5} /> },
+    { label: 'Calls & Results', path: '/results', icon: <BarChart3 size={18} strokeWidth={1.5} /> },
+    { label: 'Knowledge Base', path: '/intelligence', icon: <BrainCircuit size={18} strokeWidth={1.5} /> },
+    { label: 'Phone Numbers', path: '/numbers', icon: <Phone size={18} strokeWidth={1.5} /> },
+    { label: 'Campaigns', path: '/campaigns', icon: <Rocket size={18} strokeWidth={1.5} /> },
   ];
 
   const menu = currentRole === 'admin' ? adminMenu : clientMenu;

@@ -2264,7 +2264,9 @@ class StateManager:
 
     def load_schema(self) -> None:
         try:
-            if os.path.isdir(self.json_path):
+            if isinstance(self.json_path, dict):
+                self.schema = self.json_path
+            elif os.path.isdir(self.json_path):
                 from flows.loader import load_agent_directory
                 self.schema = load_agent_directory(self.json_path)
             else:

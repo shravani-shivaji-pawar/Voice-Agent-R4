@@ -1,10 +1,12 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Bot, FileText } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
 import FlowPreviewModal from '@/components/FlowPreviewModal';
 import QATestModal from '@/components/QATestModal';
 import GenerateSummaryModal from '@/components/GenerateSummaryModal';
+import AgentBuilderModal from '@/components/AgentBuilderModal';
 import { useAuth } from '@/context/AuthContext';
 import { getProviderLabel } from '@/lib/providerDisplay';
 
@@ -231,12 +233,12 @@ const SARVAM_VOICE_NAMES = new Set(['shreya', 'ishita', 'shubh', 'priya', 'neha'
 
 const makeInitialFormData = (overrides = {}) => ({
   name: '',
-  voice: 'shreya',
+  voice: 'anika',
   language: 'English',
   max_duration: 300,
   provider: 'twilio',
-  stt_provider: 'groq',
-  tts_provider: 'sarvam',
+  stt_provider: 'smallest',
+  tts_provider: 'smallest',
   cartesia_voice_id: DEFAULT_CARTESIA_VOICE_ID,
   smallest_model: 'lightning_v3.1',
   smallest_voice: DEFAULT_SMALLEST_VOICE,
@@ -372,8 +374,10 @@ function ConversationGuidance({ knowledge }) {
 }
 
 export default function AgentsPage() {
+  const router = useRouter();
   const { user, activeClient } = useAuth();
   const [agents, setAgents] = useState([]);
+  const [showPromptBuilder, setShowPromptBuilder] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState('create');
   const [editingAgentId, setEditingAgentId] = useState(null);
@@ -861,14 +865,23 @@ export default function AgentsPage() {
     <DashboardLayout>
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h2 className="h4 fw-bold mb-1">Voice Agents</h2>
-          <p className="text-muted small mb-0">Configure AI agent personas and voices</p>
+          <h2 className="h4 fw-bold mb-1" style={{ color: '#FFFFFF' }}>Voice Agents</h2>
+          <p className="text-muted small mb-0">Configure AI agent personas, voices, prompts, and tools</p>
         </div>
-        {user?.role === 'admin' && (
-          <button className="btn btn-primary btn-sm px-3 shadow-sm" onClick={openCreateModal}>
-            + Create Agent
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            className="btn btn-primary btn-sm px-3 shadow-sm d-flex align-items-center gap-2"
+            style={{ background: '#3b82f6', borderColor: '#3b82f6', fontWeight: 600 }}
+            onClick={() => setShowPromptBuilder(true)}
+          >
+            ✨ Create Agent (Prompt-First)
           </button>
-        )}
+          {user?.role === 'admin' && (
+            <button className="btn btn-outline-light btn-sm px-3 shadow-sm" onClick={openCreateModal}>
+              + Manual Form
+            </button>
+          )}
+        </div>
       </div>
       
       {loading ? (
@@ -884,64 +897,137 @@ export default function AgentsPage() {
           </div>
         </div>
       ) : (
-        <div className="row g-4">
-          {agents.map((agent, index) => (
-            <div key={agent.id || index} className="col-md-4">
-              <div style={{ background: '#141414', border: '1px solid #262626', borderRadius: '12px', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-                <div style={{ padding: '20px' }}>
-                  <div className="d-flex justify-content-between align-items-start mb-3" style={{ gap: '12px' }}>
-                    <h5 style={{ fontSize: '15px', fontWeight: 600, color: '#FFFFFF', margin: 0, display: 'flex', alignItems: 'flex-start', gap: '8px', minWidth: 0, flex: 1 }}>
-                      <Bot size={18} strokeWidth={1.5} style={{ color: '#6B6B6B', flexShrink: 0, marginTop: '2px' }} />
-                      <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{agent.name || 'Unnamed Agent'}</span>
-                    </h5>
-                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                      <span style={{ padding: '2px 8px', border: `1px solid ${agent.certification_status === 'Certified' ? '#4ADE80' : '#3D3D3D'}`, borderRadius: '4px', fontSize: '11px', color: agent.certification_status === 'Certified' ? '#4ADE80' : '#6B6B6B', background: 'transparent', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                        {agent.certification_status || 'Draft'}
-                      </span>
-                      <span style={{ padding: '2px 8px', border: '1px solid #262626', borderRadius: '4px', fontSize: '11px', color: '#A3A3A3', background: 'transparent', whiteSpace: 'nowrap' }}>{agent.language || 'English'}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+          {/* Built-in / Test Agents Section */}
+          {(() => {
+            const isBuiltin = (a) => {
+              const id = a.id || a.agent_id || '';
+              const name = a.name || '';
+              return ['education', 'education_counselling', 'real_estate', 'real_estate_sales'].includes(id) || name.includes('Aarohi') || name.includes('Priya');
+            };
+            const builtinAgents = agents.filter(isBuiltin);
+            const userAgents = agents.filter(a => !isBuiltin(a));
+
+            const renderAgentCard = (agent, index) => (
+              <div key={agent.id || index} className="col-md-4">
+                <div style={{ background: '#141414', border: '1px solid #262626', borderRadius: '12px', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                  <div style={{ padding: '20px' }}>
+                    <div className="d-flex justify-content-between align-items-start mb-3" style={{ gap: '12px' }}>
+                      <h5
+                        style={{ fontSize: '15px', fontWeight: 600, color: '#FFFFFF', margin: 0, display: 'flex', alignItems: 'flex-start', gap: '8px', minWidth: 0, flex: 1, cursor: 'pointer' }}
+                        onClick={() => router.push(`/agents/${agent.id || agent.agent_id}`)}
+                      >
+                        <Bot size={18} strokeWidth={1.5} style={{ color: '#3b82f6', flexShrink: 0, marginTop: '2px' }} />
+                        <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{agent.name || 'Unnamed Agent'}</span>
+                      </h5>
+                      <div style={{ display: 'flex', gap: '6px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <span style={{ padding: '2px 8px', border: `1px solid ${agent.certification_status === 'Certified' ? '#4ADE80' : '#3D3D3D'}`, borderRadius: '4px', fontSize: '11px', color: agent.certification_status === 'Certified' ? '#4ADE80' : '#6B6B6B', background: 'transparent', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                          {agent.certification_status || 'Draft'}
+                        </span>
+                        <span style={{ padding: '2px 8px', border: '1px solid #262626', borderRadius: '4px', fontSize: '11px', color: '#A3A3A3', background: 'transparent', whiteSpace: 'nowrap' }}>{agent.language || 'English'}</span>
+                      </div>
+                    </div>
+                    <p style={{ fontSize: '12px', color: '#A3A3A3', marginBottom: '6px' }}><strong style={{ color: '#6B6B6B' }}>Voice:</strong> {agent.voice || 'Default'}</p>
+                    <p style={{ fontSize: '12px', color: '#A3A3A3', marginBottom: '6px' }}><strong style={{ color: '#6B6B6B' }}>Provider:</strong> {getProviderLabel('telephony', agent.provider || 'twilio')}</p>
+                    <p style={{ fontSize: '12px', color: '#A3A3A3', marginBottom: '6px' }}><strong style={{ color: '#6B6B6B' }}>Type:</strong> {AGENT_TYPE_TEMPLATES[agent.agent_type]?.label || agent.agent_type || 'Real Estate Sales'}</p>
+                    <p style={{ fontSize: '12px', color: '#A3A3A3', marginBottom: '6px' }}><strong style={{ color: '#6B6B6B' }}>Assigned:</strong> {agent.client_name ? `${agent.client_name} (${agent.assigned_email})` : agent.assigned_email || 'Unassigned'}</p>
+                    <p style={{ fontSize: '12px', color: '#A3A3A3', marginBottom: '6px' }}><strong style={{ color: '#6B6B6B' }}>STT:</strong> Smallest AI Pulse Pro</p>
+                    <p style={{ fontSize: '12px', color: '#A3A3A3', marginBottom: '10px' }}><strong style={{ color: '#6B6B6B' }}>TTS:</strong> Smallest AI Lightning v3.1</p>
+                    <div style={{ fontSize: '12px', marginTop: '8px' }}>
+                      <strong style={{ display: 'block', marginBottom: '6px', color: '#6B6B6B', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Extracted Fields:</strong>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {agent.data_fields?.map((field, i) => (
+                          <span key={i} style={{ padding: '2px 8px', border: '1px solid #262626', borderRadius: '4px', fontSize: '11px', color: '#A3A3A3', background: 'transparent' }}>{field}</span>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                  <p style={{ fontSize: '12px', color: '#A3A3A3', marginBottom: '6px' }}><strong style={{ color: '#6B6B6B' }}>Voice:</strong> {agent.voice || 'Default'}</p>
-                  <p style={{ fontSize: '12px', color: '#A3A3A3', marginBottom: '6px' }}><strong style={{ color: '#6B6B6B' }}>Provider:</strong> {getProviderLabel('telephony', agent.provider || 'twilio')}</p>
-                  <p style={{ fontSize: '12px', color: '#A3A3A3', marginBottom: '6px' }}><strong style={{ color: '#6B6B6B' }}>Type:</strong> {AGENT_TYPE_TEMPLATES[agent.agent_type]?.label || agent.agent_type || 'Real Estate Sales'}</p>
-                  <p style={{ fontSize: '12px', color: '#A3A3A3', marginBottom: '6px' }}><strong style={{ color: '#6B6B6B' }}>Assigned:</strong> {agent.client_name ? `${agent.client_name} (${agent.assigned_email})` : agent.assigned_email || 'Unassigned'}</p>
-                  <p style={{ fontSize: '12px', color: '#A3A3A3', marginBottom: '6px' }}><strong style={{ color: '#6B6B6B' }}>STT:</strong> {getProviderLabel('stt', agent.stt_provider || 'groq')}</p>
-                  <p style={{ fontSize: '12px', color: '#A3A3A3', marginBottom: '10px' }}><strong style={{ color: '#6B6B6B' }}>TTS:</strong> {getProviderLabel('tts', agent.tts_provider || 'edge')}</p>
-                  {agent.tts_provider === 'cartesia' && (
-                    <p style={{ fontSize: '12px', color: '#A3A3A3', marginBottom: '10px' }}><strong style={{ color: '#6B6B6B' }}>Premium Voice:</strong> {CARTESIA_FEMALE_VOICES.find(v => v.value === agent.cartesia_voice_id)?.label || agent.cartesia_voice_id || 'Hinglish Speaking Lady'}</p>
-                  )}
-                  <div style={{ fontSize: '12px', marginTop: '8px' }}>
-                    <strong style={{ display: 'block', marginBottom: '6px', color: '#6B6B6B', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Extracted Fields:</strong>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                      {agent.data_fields?.map((field, i) => (
-                        <span key={i} style={{ padding: '2px 8px', border: '1px solid #262626', borderRadius: '4px', fontSize: '11px', color: '#A3A3A3', background: 'transparent' }}>{field}</span>
-                      ))}
+                  <div style={{ marginTop: 'auto', padding: '12px 20px', borderTop: '1px solid #262626', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                    <small style={{ color: '#6B6B6B', fontSize: '11px', fontFamily: 'monospace', flexShrink: 0 }}>ID: {(agent.id || agent.agent_id || '').substring(0,8)}...</small>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        style={{ background: '#3b82f6', border: 'none', color: '#fff', fontWeight: 600, fontSize: '11px', padding: '4px 10px' }}
+                        onClick={() => router.push(`/agents/${agent.id || agent.agent_id}`)}
+                      >
+                        ⚙️ Retell Editor
+                      </button>
+                      {FLOW_VISUALIZATION_ENABLED && (
+                        <button type="button" className="btn btn-outline-light btn-sm" onClick={() => openFlowPreview(agent)}>Flow</button>
+                      )}
+                      {SCRAPE_GENERATE_SCRIPT_ENABLED && user?.role === 'admin' && (
+                        <button type="button" className="btn btn-outline-light btn-sm" onClick={() => openScrapeModal(agent)}>Generate Summary</button>
+                      )}
+                      {user?.role === 'admin' && (
+                        <>
+                          <button type="button" className="btn btn-outline-light btn-sm" onClick={() => setQaAgent(agent)}>QA Test</button>
+                          <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => handleDeleteAgent(agent.id || agent.agent_id)}>Delete</button>
+                        </>
+                      )}
                     </div>
-                  </div>
-                </div>
-                <div style={{ marginTop: 'auto', padding: '12px 20px', borderTop: '1px solid #262626', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                  <small style={{ color: '#6B6B6B', fontSize: '11px', fontFamily: 'monospace', flexShrink: 0 }}>ID: {(agent.id || agent.agent_id || '').substring(0,8)}...</small>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                    {FLOW_VISUALIZATION_ENABLED && (
-                      <button type="button" className="btn btn-outline-light btn-sm" onClick={() => openFlowPreview(agent)}>Flow</button>
-                    )}
-                    {SCRAPE_GENERATE_SCRIPT_ENABLED && user?.role === 'admin' && (
-                      <button type="button" className="btn btn-outline-light btn-sm" onClick={() => openScrapeModal(agent)}>Generate Summary</button>
-                    )}
-                    {user?.role === 'admin' && (
-                      <>
-                        <button type="button" className="btn btn-outline-light btn-sm" onClick={() => setQaAgent(agent)}>QA Test</button>
-                        <button type="button" className="btn btn-outline-light btn-sm" onClick={() => openEditModal(agent)}>Edit</button>
-                        <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => handleDeleteAgent(agent.id || agent.agent_id)}>Delete</button>
-                      </>
-                    )}
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+
+            return (
+              <>
+                {/* Section 1: Built-in / Test Agents */}
+                {builtinAgents.length > 0 && (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                      <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#FFFFFF', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        ⭐ Built-in / Test Agents
+                      </h4>
+                      <span style={{ fontSize: '11px', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                        Pre-configured & Ready to Test
+                      </span>
+                    </div>
+                    <div className="row g-4">
+                      {builtinAgents.map(renderAgentCard)}
+                    </div>
+                  </div>
+                )}
+
+                {/* Section 2: User Created Agents */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', marginTop: builtinAgents.length > 0 ? '16px' : '0' }}>
+                    <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#FFFFFF', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      🚀 User Created Agents
+                    </h4>
+                    <span style={{ fontSize: '11px', background: 'rgba(74, 222, 128, 0.15)', color: '#4ADE80', border: '1px solid rgba(74, 222, 128, 0.3)', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                      Dynamic Prompt Driven
+                    </span>
+                  </div>
+                  {userAgents.length === 0 ? (
+                    <div style={{ background: '#141414', border: '1px dashed #3D3D3D', borderRadius: '12px', padding: '24px', textAlign: 'center' }}>
+                      <span style={{ fontSize: '13px', color: '#A3A3A3' }}>No custom agents created yet. Click <strong>✨ Create Agent</strong> above to generate a new agent from a prompt!</span>
+                    </div>
+                  ) : (
+                    <div className="row g-4">
+                      {userAgents.map(renderAgentCard)}
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
+
+
+      {/* Prompt-First Natural Language Agent Builder Modal */}
+      <AgentBuilderModal
+        isOpen={showPromptBuilder}
+        onClose={() => setShowPromptBuilder(false)}
+        onAgentGenerated={(newAgent) => {
+          fetchAgents();
+          if (newAgent?.id) {
+            router.push(`/agents/${newAgent.id}`);
+          }
+        }}
+      />
 
       {flowPreviewAgent && (
         <FlowPreviewModal

@@ -18,7 +18,7 @@ import urllib.request
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PROVIDER = "edge"
+DEFAULT_PROVIDER = "smallest"
 SUPPORTED_PROVIDERS = {"edge", "cartesia"} | {"sarvam", "indic", "indic_parler", "parler"} | {"smallest"}
 _AGENT_CONFIG_CACHE: dict[str, tuple[float, dict]] = {}
 _AGENT_SCHEMA_DIR = Path(__file__).resolve().parent.parent / "db" / "agents"
