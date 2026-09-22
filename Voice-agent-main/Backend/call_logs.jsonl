@@ -1190,3 +1190,4 @@
 {"timestamp": 1790092656.7780893, "event": "call_started", "start_node": "node-1767592854176"}
 {"timestamp": 1790092735.4786806, "event": "call_started", "start_node": "node-1767592854176"}
 {"timestamp": 1790098454.7255058, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790102773.9720845, "event": "call_started", "start_node": "root_greeting"}
