@@ -43,6 +43,7 @@ _CAMPAIGNS_FILE   = _DB_DIR / "campaigns.json"
 _LEADS_FILE       = _DB_DIR / "leads.json"
 _ASSIGNMENTS_FILE = _DB_DIR / "assignments.json"
 _LIVE_STATE_FILE  = _DB_DIR / "live_state.json"
+_CACHE_GET_AGENT: dict[str, tuple[float, dict]] = {}
 
 # Agents schemas stay as files — never in SQLite
 AGENTS_SCHEMA_DIR = _DB_DIR / "agents"
@@ -1417,7 +1418,7 @@ class DatabaseManager:
                         data.get("provider"), data.get("stt_provider", "smallest"),
                         data.get("tts_provider", "smallest"), data.get("cartesia_voice_id"),
                         data.get("parler_description"), data.get("assigned_email"),
-                        data.get("agent_type", "real_estate_sales"), script_val,
+                        data.get("agent_type") or "custom", script_val,
                         data.get("greeting_response") or data.get("greeting"),
                         json.dumps(data.get("data_fields", [])),
                         data.get("schema_path"), client_id_val,
@@ -1427,12 +1428,19 @@ class DatabaseManager:
                     )
                 )
                 conn.commit()
+                _CACHE_GET_AGENT.pop(agent_id, None)
                 return {**data, "id": agent_id, "name": name_val}
             finally:
                 conn.close()
         return await run_in_executor(_sync)
 
     async def get_agent(self, agent_id: str) -> Optional[dict]:
+        now = time.time()
+        if agent_id in _CACHE_GET_AGENT:
+            cached_ts, cached_val = _CACHE_GET_AGENT[agent_id]
+            if now - cached_ts < 5.0:
+                return cached_val
+
         def _sync():
             conn = _get_connection()
             try:
@@ -1453,6 +1461,7 @@ class DatabaseManager:
                     return None
                 data = dict(row)
                 data["data_fields"] = json.loads(data.get("data_fields") or "[]")
+                _CACHE_GET_AGENT[agent_id] = (time.time(), data)
                 return data
             finally:
                 conn.close()

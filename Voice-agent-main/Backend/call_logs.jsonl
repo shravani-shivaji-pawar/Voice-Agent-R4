@@ -1191,3 +1191,12 @@
 {"timestamp": 1790092735.4786806, "event": "call_started", "start_node": "node-1767592854176"}
 {"timestamp": 1790098454.7255058, "event": "call_started", "start_node": "node-1767592854176"}
 {"timestamp": 1790102773.9720845, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1790107148.8560286, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1790107180.2798626, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1790149877.7953868, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1790150044.5537527, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1790150074.4820395, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1790150504.2574344, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1790151068.3806746, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1790151243.7254088, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1790151295.946803, "event": "call_started", "start_node": "root_greeting"}

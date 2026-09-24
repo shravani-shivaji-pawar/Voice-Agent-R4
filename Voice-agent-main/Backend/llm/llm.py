@@ -198,22 +198,29 @@ _REAL_ESTATE_LEAKAGE_WORDS = re.compile(
 
 def _check_and_fix_domain_leakage(text: str, domain: str = "real_estate", language: str = "en") -> str:
     """
-    Safety Guard: Intercepts and replaces residual Real Estate phrasing if generated during an Education session.
+    Safety Guard: Intercepts and replaces residual Real Estate phrasing if generated during an Education or Custom agent session.
     """
-    if domain != "education" or not text:
+    if not text:
         return text
-        
-    if _REAL_ESTATE_LEAKAGE_WORDS.search(text):
-        logger.warning(f"[DOMAIN GUARD] Real Estate leakage intercepted in Education mode: '{text}'")
-        from llm.language_utils import normalize_language_code
-        lang = normalize_language_code(language)
-        if lang in ("hi", "hinglish"):
-            return "मैं आपकी एजुकेशन काउंसलर हूँ। मैं आपको सही कोर्स, कॉलेज, एंट्रेंस एग्जाम और करियर पाथ चुनने में मदद कर सकती हूँ।"
-        elif lang == "mr":
-            return "मी तुमची एज्युकेशन कौन्सिलर आहे. मी तुम्हाला योग्य कोर्स, कॉलेज आणि करिअर पर्यायांसाठी मदत करू शकते."
-        else:
-            return "I am your AI education counsellor. I can help you explore courses, colleges, entrance exams, and career pathways."
-            
+
+    clean_d = (domain or "").strip().lower()
+
+    if clean_d in ("education", "education_counselling", "aarohi"):
+        if _REAL_ESTATE_LEAKAGE_WORDS.search(text):
+            logger.warning(f"[DOMAIN GUARD] Real Estate leakage intercepted in Education mode: '{text}'")
+            from llm.language_utils import normalize_language_code
+            lang = normalize_language_code(language)
+            if lang in ("hi", "hinglish"):
+                return "मैं आपकी एजुकेशन काउंसलर हूँ। मैं आपको सही कोर्स, कॉलेज, एंट्रेंस एग्जाम और करियर पाथ चुनने में मदद कर सकती हूँ।"
+            elif lang == "mr":
+                return "मी तुमची एज्युकेशन कौन्सिलर आहे. मी तुम्हाला योग्य कोर्स, कॉलेज आणि करिअर पर्यायांसाठी मदत करू शकते."
+            else:
+                return "I am your AI education counsellor. I can help you explore courses, colleges, entrance exams, and career pathways."
+    elif clean_d not in ("real_estate", "real_estate_sales", "priya"):
+        if re.search(r"\b(?:suncity|priya\s+from\s+suncity|suncity\s+apartments)\b", text, re.IGNORECASE):
+            logger.warning(f"[DOMAIN GUARD] Suncity leakage intercepted in Custom agent mode (domain='{domain}'): '{text}'")
+            text = re.sub(r"\b(I(?:'m|\s+am)\s+Priya\s+from\s+Suncity\s+Apartments|Suncity\s+Apartments)\b\.?", "", text, flags=re.IGNORECASE).strip()
+
     return text
 
 COMBINED_EXTRACTION_EDUCATION_PROMPT = """You are Aarohi, an AI Education Counsellor on a live phone call.
@@ -317,6 +324,7 @@ Spoken Response Rules:
 - Match the user's language: If the user speaks Hindi or Hinglish, respond in natural spoken Hindi/Hinglish. If English, respond in English.
 - Keep responses short (15-25 words max). Plain spoken sentences. NEVER use bullet points, tables, lists, or markdown formatting.
 - Stay strictly in character according to your assigned system prompt.
+- STRICT ISOLATION RULE: You are ONLY this assigned agent persona. Do NOT under any circumstances adopt any other identity (such as Priya, Suncity Apartments, or Aarohi) unless explicitly stated in your prompt above.
 
 Respond ONLY with a valid JSON object matching this schema:
 {{
@@ -328,10 +336,24 @@ Respond ONLY with a valid JSON object matching this schema:
   "spoken_reply_text": "Your natural spoken response here"
 }}
 """
-    elif domain == "education":
+    elif domain in ("education", "education_counselling", "aarohi"):
         prompt_template = COMBINED_EXTRACTION_EDUCATION_PROMPT
-    else:
+    elif domain in ("real_estate", "real_estate_sales", "priya"):
         prompt_template = COMBINED_EXTRACTION_REAL_ESTATE_PROMPT
+    else:
+        prompt_template = f"""You are a professional AI voice assistant on a live phone call.
+Respond naturally, concisely (15-25 words max), and stay strictly in character.
+
+Respond ONLY with a valid JSON object matching this schema:
+{{
+  "intent_analysis": {{
+    "intent": "GREETING | DISCOVERY | QUALIFICATION | LIVE_SEARCH | OBJECTION_HANDLING | SCHEDULING | CLOSING",
+    "confidence_score": 1.0,
+    "entities": {{}}
+  }},
+  "spoken_reply_text": "Your natural spoken response here"
+}}
+"""
 
     messages = [
         {"role": "system", "content": prompt_template + (f"\n\nLive Context: {context}" if context else "")}
@@ -561,20 +583,35 @@ def _get_contextual_fallback(
         ])
 
     if is_greeting:
-        if lang in ("hi", "hinglish"):
+        if domain in ("education", "education_counselling", "aarohi"):
+            if lang in ("hi", "hinglish"):
+                return _select_candidate([
+                    "नमस्ते! मैं आरोही बोल रही हूँ, आपकी एजुकेशन काउंसलर। आप अभी क्या पढ़ाई कर रहे हैं या आगे क्या पढ़ना चाहते हैं?",
+                    "Hi! Main Aarohi baat kar rahi hoon, aapki education counsellor. Aap aage kya padhna chahte hain?"
+                ])
             return _select_candidate([
-                "नमस्ते, मैं सनसिटी अपार्टमेंट्स से प्रिया बोल रही हूँ। क्या आप प्रॉपर्टी खरीदना या किराए पर लेना चाहते हैं?",
-                "नमस्ते, मैं सनसिटी अपार्टमेंट्स से प्रिया। मैं आपकी प्रॉपर्टी खोज में मदद करने के लिए कॉल कर रही हूँ।"
+                "Hi, I'm Aarohi, your education counsellor. What are you currently studying or planning to study?",
+                "Hello, I'm Aarohi. I can help you with course options, colleges, or study abroad plans. What are you preparing for?"
             ])
-        elif lang == "mr":
+        elif domain in ("real_estate", "real_estate_sales", "priya"):
+            if lang in ("hi", "hinglish"):
+                return _select_candidate([
+                    "नमस्ते, मैं सनसिटी अपार्टमेंट्स से प्रिया बोल रही हूँ। क्या आप प्रॉपर्टी खरीदना या किराए पर लेना चाहते हैं?",
+                    "नमस्ते, मैं सनसिटी अपार्टमेंट्स से प्रिया। मैं आपकी प्रॉपर्टी खोज में मदद करने के लिए कॉल कर रही हूँ।"
+                ])
+            elif lang == "mr":
+                return _select_candidate([
+                    "नमस्कार, मी सनसिटी अपार्टमेंट्सकडून प्रिया बोलत आहे. तुम्ही प्रॉपर्टी खरेदी करू इच्छिता की भाड्याने घेऊ इच्छिता?",
+                    "नमस्कार! मी सनसिटी अपार्टमेंट्सकडून प्रिया. मी तुमच्या प्रॉपर्टी शोधत मदत करण्यासाठी कॉल केला आहे."
+                ])
             return _select_candidate([
-                "नमस्कार, मी सनसिटी अपार्टमेंट्सकडून प्रिया बोलत आहे. तुम्ही प्रॉपर्टी खरेदी करू इच्छिता की भाड्याने घेऊ इच्छिता?",
-                "नमस्कार! मी सनसिटी अपार्टमेंट्सकडून प्रिया. मी तुमच्या प्रॉपर्टी शोधत मदत करण्यासाठी कॉल केला आहे."
+                "Hi, this is Priya from Suncity Apartments. Are you looking to buy or rent a property?",
+                "Hello! This is Priya from Suncity Apartments. How can I assist with your property search today?"
             ])
-        return _select_candidate([
-            "Hi, this is Priya from Suncity Apartments. Are you looking to buy or rent a property?",
-            "Hello! This is Priya from Suncity Apartments. How can I assist with your property search today?"
-        ])
+        else:
+            if lang in ("hi", "hinglish"):
+                return "नमस्ते! मैं आपकी सहायता करने के लिए तैयार हूँ। आप क्या जानना चाहते हैं?"
+            return "Hello! How can I assist you today?"
 
     if domain == "education":
         if is_greeting:
@@ -867,28 +904,41 @@ async def generate_response(
                     context_len = len(summary_markdown) if summary_markdown else 0
 
             if any(k in user_text.lower() for k in ["who are you", "who is this", "kon ho", "kaun ho", "कौन हो", "आपका नाम"]):
-                domain = "real_estate"
+                resolved_domain = "custom"
                 if state_manager and hasattr(state_manager, "schema") and state_manager.schema:
-                    raw_d = state_manager.schema.get("domain") or state_manager.schema.get("agent_id") or ""
-                    if raw_d in ("education", "education_counselling", "aarohi"):
-                        domain = "education"
-                elif runtime_context and runtime_context.get("domain") in ("education", "education_counselling", "aarohi"):
-                    domain = "education"
+                    raw_d = state_manager.schema.get("domain") or state_manager.schema.get("agent_id") or state_manager.schema.get("agent_type") or ""
+                    if raw_d:
+                        resolved_domain = raw_d
+                elif runtime_context and runtime_context.get("domain"):
+                    resolved_domain = runtime_context.get("domain")
 
-                if domain == "education":
+                if resolved_domain in ("education", "education_counselling", "aarohi"):
                     if language == "hi":
                         answer = "नमस्ते! मैं आरोही बोल रही हूँ, आपकी एजुकेशन काउंसलर। मैं आपको कोर्स, कॉलेज, एंट्रेंस एग्जाम और एडमिशन प्रोसेस के लिए गाइड कर सकती हूँ।"
                     elif language == "hinglish":
                         answer = "Hi! Main Aarohi baat kar rahi hoon, aapki education counsellor. Main aapko courses, colleges, entrance exams aur study abroad ke liye guide kar sakti hoon."
                     else:
                         answer = "Hi, I'm Aarohi, your AI education counsellor. I can help you explore courses, colleges, entrance exams, and study abroad options."
-                else:
+                elif resolved_domain in ("real_estate", "real_estate_sales", "priya"):
                     if language == "hi":
                         answer = "नमस्ते! मैं सनसिटी अपार्टमेंट्स से प्रिया बोल रही हूँ। मैं आपको फ्लैट्स और प्रॉपर्टी डिटेल्स के बारे में जानकारी दे सकती हूँ।"
                     elif language == "hinglish":
                         answer = "Hi! Main Suncity Apartments se Priya baat kar rahi hoon. Main aapko property details aur site visit ke liye assist kar sakti hoon."
                     else:
                         answer = "Hello! This is Priya from Suncity Apartments. I'm here to assist you with finding the right property."
+                else:
+                    agent_name = "AI Assistant"
+                    if state_manager and hasattr(state_manager, "schema") and isinstance(state_manager.schema, dict):
+                        agent_name = state_manager.schema.get("agent_name") or state_manager.schema.get("name") or agent_name
+                    elif runtime_context and runtime_context.get("agent_name"):
+                        agent_name = runtime_context.get("agent_name")
+
+                    if language == "hi":
+                        answer = f"नमस्ते! मैं {agent_name} हूँ। मैं आपकी सहायता करने के लिए यहाँ हूँ।"
+                    elif language == "hinglish":
+                        answer = f"Hello! Main {agent_name} hoon. Main aapki kaise help kar sakta hoon?"
+                    else:
+                        answer = f"Hello! I am {agent_name}. How can I assist you today?"
                     
             finalized_response = _check_and_fix_domain_leakage(answer, domain=domain, language=language)
 
@@ -971,13 +1021,19 @@ async def generate_response(
         slots["phone"] = data.get("phone")
 
     # 3. Create active Graph state
-    domain = "real_estate"
+    domain = "custom"
+    sys_prompt = None
     if state_manager and hasattr(state_manager, "schema") and state_manager.schema:
-        raw_d = state_manager.schema.get("domain") or state_manager.schema.get("agent_id") or ""
-        if raw_d in ("education", "education_counselling", "aarohi"):
-            domain = "education"
-    elif runtime_context and runtime_context.get("domain") in ("education", "education_counselling", "aarohi"):
-        domain = "education"
+        raw_d = state_manager.schema.get("domain") or state_manager.schema.get("agent_id") or state_manager.schema.get("agent_type") or ""
+        if raw_d:
+            domain = raw_d
+        if isinstance(state_manager.schema, dict):
+            sys_prompt = state_manager.schema.get("system_prompt") or state_manager.schema.get("script")
+    elif runtime_context and runtime_context.get("domain"):
+        domain = runtime_context.get("domain")
+
+    if not sys_prompt and state_manager:
+        sys_prompt = getattr(state_manager, "custom_system_prompt", None)
 
     graph_state = {
         "messages": messages,
@@ -1003,13 +1059,13 @@ async def generate_response(
         last_confidence = getattr(state_manager, "last_intent_confidence", 1.0) if state_manager else 1.0
         word_count = len(user_text.split())
         
-        if cfg.ENABLE_SINGLE_CALL_FAST_PATH and not is_first_turn and word_count <= 15 and last_confidence > 0.8:
+        if (cfg.ENABLE_SINGLE_CALL_FAST_PATH and not is_first_turn and word_count <= 15 and last_confidence > 0.8) or sys_prompt:
             logger.info("Taking single-call fast path for LLM response.")
-            global_prompt = ""
-            if state_manager:
-                global_prompt = getattr(state_manager, "global_prompt", "") or (state_manager.schema.get("global_prompt", "") if hasattr(state_manager, "schema") else "")
+            global_prompt = sys_prompt or ""
+            if not global_prompt and state_manager:
+                global_prompt = getattr(state_manager, "global_prompt", "") or (state_manager.schema.get("global_prompt", "") if (hasattr(state_manager, "schema") and isinstance(state_manager.schema, dict)) else "")
                 
-            combined = await generate_combined_intent_and_response(user_text, conversation_history or [], global_prompt, domain=domain)
+            combined = await generate_combined_intent_and_response(user_text, conversation_history or [], global_prompt, domain=domain, system_prompt=sys_prompt)
             if combined and combined.spoken_reply_text and combined.spoken_reply_text != "Give me just one moment...":
                 # Sync back state
                 es = combined.intent_analysis.entities

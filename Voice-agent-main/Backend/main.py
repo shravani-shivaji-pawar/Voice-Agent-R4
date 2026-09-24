@@ -7498,7 +7498,8 @@ async def websocket_voice_live(websocket: WebSocket):
     stt    = RealEstateSTTProcessor(turn_state=turn_state, agent_id=agent_id, vad_enabled=False)
     llm    = RealEstateLLMProcessor(turn_state=turn_state, agent_id=agent_id, agent_config=agent_config)
     llm.current_language = requested_lang
-    llm.state_manager = StateManager(schema_path)
+    schema_to_use = schema_path or agent_config or {}
+    llm.state_manager = StateManager(schema_to_use)
     llm.state_manager.reset_state()                          # Fix: prevent stale session carry-over
     llm.state_manager.conversation_data["name"] = lead_name
     llm.state_manager.conversation_data["lead_name"] = lead_name
@@ -7699,7 +7700,8 @@ async def websocket_voice_demo(websocket: WebSocket):
             stt    = RealEstateSTTProcessor(turn_state=turn_state, agent_id=agent_id, vad_enabled=False)
             llm    = RealEstateLLMProcessor(turn_state=turn_state, agent_id=agent_id, agent_config=agent_config)
             llm.current_language = requested_lang
-            llm.state_manager = StateManager(schema_path)
+            schema_to_use = schema_path or agent_config or {}
+            llm.state_manager = StateManager(schema_to_use)
             llm.state_manager.reset_state()
             llm.state_manager.conversation_data["name"] = lead_name
             llm.state_manager.conversation_data["lead_name"] = lead_name
@@ -7936,7 +7938,7 @@ def _resolve_schema(agent_id: str) -> str:
         if os.path.exists(edu_db_file):
             return edu_db_file
 
-    if not clean_id or clean_id in ("real-estate-demo", "default", "real_estate_sales", "real_estate"):
+    if clean_id in ("real-estate-demo", "real_estate_sales", "real_estate", "priya"):
         re_file = os.path.join(os.path.dirname(__file__), "Updated_Real_Estate_Agent.json")
         if os.path.exists(re_file):
             return re_file
@@ -7965,8 +7967,7 @@ def _resolve_schema(agent_id: str) -> str:
 
     if os.path.exists(fallback_file):
         return fallback_file
-    default = os.path.join(os.path.dirname(__file__), "Updated_Real_Estate_Agent.json")
-    return default
+    return None
 
 
 class VoiceDemoTextTurnRequest(BaseModel):

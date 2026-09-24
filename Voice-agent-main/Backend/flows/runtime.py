@@ -176,12 +176,14 @@ class RealEstateLLMProcessor(FrameProcessor):
         if not schema_path and agent_id:
             if agent_id in ("education_counselling", "education", "aarohi"):
                 schema_path = os.path.join(_ROOT, "Education_Counselling_Agent.json")
-            elif agent_id in ("real_estate", "real_estate_sales", "priya", "default"):
+            elif agent_id in ("real_estate", "real_estate_sales", "priya"):
                 schema_path = os.path.join(_ROOT, "Updated_Real_Estate_Agent.json")
+            elif self.agent_config:
+                schema_path = self.agent_config
             else:
                 schema_path = None
-        schema_path = schema_path or STATE_SCHEMA_PATH
-        self.state_manager = StateManager(schema_path)
+        schema_to_use = schema_path if schema_path is not None else (self.agent_config or {})
+        self.state_manager = StateManager(schema_to_use)
         self._current_gen_id = 0
         self._fallback_replies = [
             "Sorry, I didn't catch that clearly. Could you repeat that once?",

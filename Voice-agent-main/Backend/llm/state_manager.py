@@ -317,20 +317,31 @@ async def handle_greeting(state: ConversationState) -> ConversationState:
         domain = state.get("domain") or "real_estate"
         from llm.language_utils import normalize_language_code
         lang = normalize_language_code(lang)
-        if domain == "education":
+        if domain in ("education", "education_counselling", "aarohi"):
             if lang == "hi":
                 opener = "नमस्ते! मैं आरोही बोल रही हूँ, आपकी एजुकेशन काउंसलर। आप अभी क्या पढ़ाई कर रहे हैं या आगे क्या पढ़ना चाहते हैं?"
             elif lang == "hinglish":
                 opener = "Hi! Main Aarohi baat kar rahi hoon, aapki education counsellor. Aap abhi kya padhai kar rahe hain ya aage kya padhna chahte hain?"
             else:
                 opener = "Hi, I'm Aarohi, your education counsellor. What are you currently studying or planning to study?"
-        else:
+        elif domain in ("real_estate", "real_estate_sales", "priya"):
             if lang == "hi":
                 opener = "नमस्ते! मैं सनसिटी अपार्टमेंट्स से प्रिया बोल रही हूँ। क्या आप फ्लैट खरीदने या किराए पर लेने के लिए देख रहे हैं?"
             elif lang == "hinglish":
-                opener = "Namaste! Main Suncity Apartments se Priya baat kar rahi hoon. Kya aap property khareedne ya rent par lene ke liye dekh rahe hain?"
+                opener = "Namaste! Main Suncity Apartments se Priya baat kar rahi hoon. Kya aap property khareedne ya rent par lene ke liye dekh rahe हैं?"
             else:
                 opener = "Hello! This is Priya from Suncity Apartments. I'm following up on your property search to see what you're looking for."
+        else:
+            agent_name = state.get("agent_name") or "your assistant"
+            custom_g = state.get("greeting") or state.get("greeting_response")
+            if custom_g:
+                opener = custom_g
+            elif lang == "hi":
+                opener = f"नमस्ते! मैं {agent_name} हूँ। मैं आपकी क्या मदद कर सकता हूँ?"
+            elif lang == "hinglish":
+                opener = f"Hello! Main {agent_name} hoon. How can I help you today?"
+            else:
+                opener = f"Hello! I'm {agent_name}. How can I assist you today?"
 
         state["messages"].append(AIMessage(content=opener))
         state["current_node"] = "DISCOVERY"
@@ -720,7 +731,7 @@ async def handle_open_domain_query(state: ConversationState) -> ConversationStat
             f"{re_anchor}\n"
             "Total response: 20-35 words. No exclamation marks."
         )
-    else:
+    elif domain in ("real_estate", "real_estate_sales", "priya"):
         if return_node == "QUALIFICATION" or slots.get("intent"):
             if not slots.get("bhk") and not slots.get("preferred_bhk"):
                 re_anchor = "After answering, gently ask: what size apartment are they looking for?"
@@ -741,6 +752,15 @@ async def handle_open_domain_query(state: ConversationState) -> ConversationStat
             "After you've answered, return smoothly to the conversation.\n"
             f"{re_anchor}\n"
             "Total response: 20-35 words. No exclamation marks."
+        )
+    else:
+        instruction = (
+            f"{slot_context}\n\n"
+            "The caller asked a question or made an off-script comment.\n"
+            "Answer briefly, accurately, and naturally according to your assigned system prompt and persona.\n"
+            "STRICT ISOLATION RULE: Do NOT adopt any other persona (such as Priya from Suncity Apartments or Aarohi).\n"
+            "After answering, return smoothly to the conversation.\n"
+            "Total response: 15-25 words."
         )
 
     history = []
