@@ -101,6 +101,14 @@ _KNOWN_HALLUCINATION_PHRASES = (
     "please subscribe",
     "thanks for watching",
     "thank you for watching",
+    "subtitles by",
+    "amara.org",
+    "see you in the next video",
+    "thank you.",
+    "neshiya",
+    "would find a new desk",
+    "find a new desk",
+    "i'd be happy to help with that",
 )
 
 
@@ -166,6 +174,16 @@ class RealEstateLLMProcessor(FrameProcessor):
                 self.agent_config["system_prompt"] = self.custom_system_prompt
             if self.custom_greeting and "greeting_response" not in self.agent_config:
                 self.agent_config["greeting_response"] = self.custom_greeting
+
+        logger.info(
+            "[LLM RUNTIME] agent_id=%s has_applied_website_knowledge=%s applied_draft_id=%s source_url=%s knowledge_length=%d",
+            self.agent_id,
+            bool(self.agent_config.get("has_applied_website_knowledge")),
+            self.agent_config.get("applied_draft_id"),
+            self.agent_config.get("website_source_url"),
+            len(self.agent_config.get("website_knowledge") or "")
+        )
+
         self.history: list[dict[str, str]] = []
         self.current_language = self.agent_config.get("language") or "en"
         self.language_tracker = LanguageTracker(initial_language=self.current_language)
@@ -556,10 +574,10 @@ class VADProcessor(FrameProcessor):
                 self.noise_floor = float(np.percentile(self._rms_history, self.noise_floor_percentile))
         
         # Adaptive activation threshold tuned for normal/soft mic speech:
-        dynamic_threshold = max(self.noise_floor * 1.8, self.noise_floor + 0.0008, 0.0012)
+        dynamic_threshold = max(self.noise_floor * 2.0, self.noise_floor + 0.0015, 0.0035)
         dynamic_threshold = min(dynamic_threshold, self.max_threshold)
         now_mono = time.monotonic()
-        voice_presence_threshold = max(dynamic_threshold * 0.50, self.noise_floor + 0.0005)
+        voice_presence_threshold = max(dynamic_threshold * 0.50, self.noise_floor + 0.0015)
 
         # Detect speech start
         if not self.is_speaking:
@@ -748,11 +766,11 @@ class RealEstateSTTProcessor(FrameProcessor):
                 self._rms_history.pop(0)
                 self.noise_floor = float(np.percentile(self._rms_history, 10))
 
-        dynamic_threshold = max(self.noise_floor * 3.0, self.noise_floor + 0.0015, 0.002)
+        dynamic_threshold = max(self.noise_floor * 3.0, self.noise_floor + 0.0020, 0.0035)
         dynamic_threshold = min(dynamic_threshold, 0.018)
         now_mono = time.monotonic()
-        voice_presence_threshold = max(dynamic_threshold * 0.40, self.noise_floor + 0.001)
-        strong_voice_threshold = max(dynamic_threshold * 1.10, self.noise_floor + 0.002)
+        voice_presence_threshold = max(dynamic_threshold * 0.40, self.noise_floor + 0.0015)
+        strong_voice_threshold = max(dynamic_threshold * 1.10, self.noise_floor + 0.0025)
 
         # Ignore inbound mic audio while TTS is actively speaking, unless strong barge-in speech occurs.
         if self.turn_state and self.turn_state.is_stt_blocked():

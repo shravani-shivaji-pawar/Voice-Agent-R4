@@ -1,0 +1,225 @@
+{
+  "agent_name": "Foodie",
+  "voice_id": "anika",
+  "conversation_flow_id": "flowv2_d1ae8cd272e7",
+  "global_prompt": "Website intelligence source: https://www.zomato.com/.\nComplete Company Knowledge Summary:\n# Zomato - Knowledge Base\n\n## Company Overview\nBased on www.zomato.com public website data.\n\n## Mission & Vision\nTo provide high quality solutions and services.\n\n## Products\n* **India\u2019s #1**: Available solution.\n* **food delivery app**: Available solution.\n* **Restaurant Expansion Consulting Services by Zomato \u2013 New Outlet Growth Made Easy**: Available solution.\n* **Applicability and Scope**: Available solution.\n* **The information we collect and how we use it**: Available solution.\n* **Information You Provide to Us**: Available solution.\n* **Data of Minors**: Available solution.\n* **Information We Collect Through Automatic Data Collection Technologies**: Available solution.\n\n## Services\n* Support and advisory for India\u2019s #1.\n* Support and advisory for food delivery app.\n* Support and advisory for Restaurant Expansion Consulting Services by Zomato \u2013 New Outlet Growth Made Easy.\n* Support and advisory for Applicability and Scope.\n* Support and advisory for The information we collect and how we use it.\n* Support and advisory for Information You Provide to Us.\n* Support and advisory for Data of Minors.\n* Support and advisory for Information We Collect Through Automatic Data Collection Technologies.\n\n## Features\n* Investor Relations Company overview Our businesses Food delivery A platform to discover restaurants, order food, and get fast delivery.\n* Data-backed strategies to help your restaurant identify the right locations, launch faster, and scale profitably.\n* Fast commerce, smarter living Blinkit delivers groceries and essentials to your doorstep, redefining everyday convenience.\n\n## Industries Served\nRetail\n\n## Customer Segments\nIndividuals, small businesses, and enterprise clients.\n\n## Pricing\nPricing information is not publicly available.\n\n## FAQs\n**Q: Have questions?**\n**A:** Please consult our advisors for exact specifications.\n\n\n## Technologies\nCloud, Security\n\n## Contact Information\n* **Website**: https://www.zomato.com/\n\n## Integrations\nSupported through developer REST APIs and webhooks.\n\n## Security & Compliance\nEnterprise-grade data security protocols and privacy standards.\n\n## Careers\nOpportunities available for talented individuals. Flexible remote work culture.\n\n## Blogs & News\nLatest product updates and industry announcements published on company portal.\n\n## Policies & Compliance\nGDPR and privacy guidelines strictly followed.\n\n## Support\nHelpdesk support hours: Monday to Friday 9 AM to 6 PM.\n\n## Company Highlights & Key Facts\nProven customer satisfaction track record.\n\n## Competitive Advantages\n* Trusted and secure operations.\n* Personalized service model.\n\n## Frequently Discussed Topics\nProduct features, onboarding timeline, pricing requests, custom integrations.\n\n## Semantic Keywords & Synonyms\nCloud, Security, Retail, Zomato, support, helpdesk, pricing, pricing plans\n\n## Relationships & Use Cases\nProvides Real Estate Sales automation solutions for global clients.\nUse only verified website facts and keep unsupported claims out of the call.",
+  "conversationFlow": {
+    "conversation_flow_id": "flowv2_d1ae8cd272e7",
+    "version": 2,
+    "schema_version": "2.0",
+    "global_prompt": "Website intelligence source: https://www.zomato.com/.\nComplete Company Knowledge Summary:\n# Zomato - Knowledge Base\n\n## Company Overview\nBased on www.zomato.com public website data.\n\n## Mission & Vision\nTo provide high quality solutions and services.\n\n## Products\n* **India\u2019s #1**: Available solution.\n* **food delivery app**: Available solution.\n* **Restaurant Expansion Consulting Services by Zomato \u2013 New Outlet Growth Made Easy**: Available solution.\n* **Applicability and Scope**: Available solution.\n* **The information we collect and how we use it**: Available solution.\n* **Information You Provide to Us**: Available solution.\n* **Data of Minors**: Available solution.\n* **Information We Collect Through Automatic Data Collection Technologies**: Available solution.\n\n## Services\n* Support and advisory for India\u2019s #1.\n* Support and advisory for food delivery app.\n* Support and advisory for Restaurant Expansion Consulting Services by Zomato \u2013 New Outlet Growth Made Easy.\n* Support and advisory for Applicability and Scope.\n* Support and advisory for The information we collect and how we use it.\n* Support and advisory for Information You Provide to Us.\n* Support and advisory for Data of Minors.\n* Support and advisory for Information We Collect Through Automatic Data Collection Technologies.\n\n## Features\n* Investor Relations Company overview Our businesses Food delivery A platform to discover restaurants, order food, and get fast delivery.\n* Data-backed strategies to help your restaurant identify the right locations, launch faster, and scale profitably.\n* Fast commerce, smarter living Blinkit delivers groceries and essentials to your doorstep, redefining everyday convenience.\n\n## Industries Served\nRetail\n\n## Customer Segments\nIndividuals, small businesses, and enterprise clients.\n\n## Pricing\nPricing information is not publicly available.\n\n## FAQs\n**Q: Have questions?**\n**A:** Please consult our advisors for exact specifications.\n\n\n## Technologies\nCloud, Security\n\n## Contact Information\n* **Website**: https://www.zomato.com/\n\n## Integrations\nSupported through developer REST APIs and webhooks.\n\n## Security & Compliance\nEnterprise-grade data security protocols and privacy standards.\n\n## Careers\nOpportunities available for talented individuals. Flexible remote work culture.\n\n## Blogs & News\nLatest product updates and industry announcements published on company portal.\n\n## Policies & Compliance\nGDPR and privacy guidelines strictly followed.\n\n## Support\nHelpdesk support hours: Monday to Friday 9 AM to 6 PM.\n\n## Company Highlights & Key Facts\nProven customer satisfaction track record.\n\n## Competitive Advantages\n* Trusted and secure operations.\n* Personalized service model.\n\n## Frequently Discussed Topics\nProduct features, onboarding timeline, pricing requests, custom integrations.\n\n## Semantic Keywords & Synonyms\nCloud, Security, Retail, Zomato, support, helpdesk, pricing, pricing plans\n\n## Relationships & Use Cases\nProvides Real Estate Sales automation solutions for global clients.\nUse only verified website facts and keep unsupported claims out of the call.",
+    "start_node_id": "start",
+    "nodes": [
+      {
+        "id": "start",
+        "name": "Greeting",
+        "type": "conversation",
+        "instruction": {
+          "type": "prompt",
+          "text": "Follow the published Flow V2 node 'Greeting' and keep the reply concise."
+        },
+        "response": "Hello, this is Foodie. Am I speaking with {{name}}?",
+        "edges": [
+          {
+            "id": "edge_start_1_discovery",
+            "condition": "Confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Confirm"
+            },
+            "destination_node_id": "discovery"
+          },
+          {
+            "id": "edge_start_2_end",
+            "condition": "Deny",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Deny"
+            },
+            "destination_node_id": "end"
+          },
+          {
+            "id": "edge_start_3_fallback",
+            "condition": "Unclear",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Unclear"
+            },
+            "destination_node_id": "fallback"
+          }
+        ],
+        "start_speaker": "agent",
+        "intent_triggers": [
+          "call_connected"
+        ]
+      },
+      {
+        "id": "discovery",
+        "name": "Discovery",
+        "type": "conversation",
+        "instruction": {
+          "type": "prompt",
+          "text": "Follow the published Flow V2 node 'Discovery' and keep the reply concise."
+        },
+        "response": "Could you share a little about what you are looking for?",
+        "edges": [
+          {
+            "id": "edge_discovery_1_confirm_followup",
+            "condition": "Provide Info",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Provide Info"
+            },
+            "destination_node_id": "confirm_followup"
+          },
+          {
+            "id": "edge_discovery_2_confirm_followup",
+            "condition": "Confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Confirm"
+            },
+            "destination_node_id": "confirm_followup"
+          },
+          {
+            "id": "edge_discovery_3_fallback",
+            "condition": "Unclear",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Unclear"
+            },
+            "destination_node_id": "fallback"
+          }
+        ],
+        "intent_triggers": [
+          "confirm",
+          "provide_info"
+        ]
+      },
+      {
+        "id": "fallback",
+        "name": "Clarify",
+        "type": "fallback",
+        "instruction": {
+          "type": "prompt",
+          "text": "Follow the published Flow V2 node 'Clarify' and keep the reply concise."
+        },
+        "response": "Sorry, I did not catch that clearly. Could you repeat it once?",
+        "edges": [
+          {
+            "id": "edge_fallback_1_discovery",
+            "condition": "Provide Info",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Provide Info"
+            },
+            "destination_node_id": "discovery"
+          },
+          {
+            "id": "edge_fallback_2_discovery",
+            "condition": "Confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Confirm"
+            },
+            "destination_node_id": "discovery"
+          },
+          {
+            "id": "edge_fallback_3_end",
+            "condition": "Deny",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Deny"
+            },
+            "destination_node_id": "end"
+          }
+        ],
+        "intent_triggers": [
+          "unclear"
+        ],
+        "fallback": {
+          "max_attempts": 2,
+          "escalation_target": "end"
+        }
+      },
+      {
+        "id": "confirm_followup",
+        "name": "Confirm Follow-up",
+        "type": "conversation",
+        "instruction": {
+          "type": "prompt",
+          "text": "Follow the published Flow V2 node 'Confirm Follow-up' and keep the reply concise."
+        },
+        "response": "Thanks. I will have the team follow up with the right details.",
+        "edges": [
+          {
+            "id": "edge_confirm_followup_1_end",
+            "condition": "Confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Confirm"
+            },
+            "destination_node_id": "end"
+          },
+          {
+            "id": "edge_confirm_followup_2_end",
+            "condition": "Deny",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Deny"
+            },
+            "destination_node_id": "end"
+          },
+          {
+            "id": "edge_confirm_followup_3_fallback",
+            "condition": "Unclear",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Unclear"
+            },
+            "destination_node_id": "fallback"
+          }
+        ],
+        "intent_triggers": [
+          "confirm",
+          "provide_info"
+        ]
+      },
+      {
+        "id": "end",
+        "name": "End",
+        "type": "end",
+        "instruction": {
+          "type": "prompt",
+          "text": "Follow the published Flow V2 node 'End' and keep the reply concise."
+        },
+        "response": "Thank you. Have a good day.",
+        "edges": [],
+        "intent_triggers": [
+          "confirm",
+          "deny"
+        ]
+      }
+    ]
+  },
+  "tts_provider": "smallest",
+  "stt_provider": "smallest",
+  "smallest_model": "lightning_v3.1",
+  "provider_config": {
+    "stt_provider": "smallest",
+    "tts_provider": "smallest",
+    "cartesia_voice_id": "95d51f79-c397-46f9-b49a-23763d3eaa2d",
+    "smallest_model": "lightning_v3.1",
+    "parler_description": ""
+  },
+  "agent_metadata": {
+    "agent_type": "real_estate_sales",
+    "assigned_email": "",
+    "client_id": null,
+    "flow_v2_live": true,
+    "flow_v2_artifact_path": "db\\agents\\agent-24d052dde825.fec63817.live.flow.v2.json",
+    "flow_v2_published_at": "2026-09-25T13:21:25.229196",
+    "flow_v2_published_by": null,
+    "flow_v2_runtime_backup_path": "db\\agents\\agent-24d052dde825.runtime.backup.2a2c31f5.json"
+  }
+}

@@ -362,6 +362,154 @@ Respond ONLY with a valid JSON object matching this schema:
     for msg in history[-8:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
         
+def _parse_combined_response_payload(raw: Any, domain: str) -> Optional[CombinedResponseAnalysis]:
+    """Parse dict or raw string/exception into CombinedResponseAnalysis cleanly."""
+    data = None
+    if isinstance(raw, dict):
+        data = raw
+    elif isinstance(raw, str):
+        cleaned_raw = raw.strip()
+        # Strip markdown block wrappers if present
+        if cleaned_raw.startswith("```"):
+            cleaned_raw = re.sub(r"^```(?:json)?\s*", "", cleaned_raw, flags=re.IGNORECASE)
+            cleaned_raw = re.sub(r"\s*```$", "", cleaned_raw)
+        
+        try:
+            data = json.loads(cleaned_raw)
+        except Exception:
+            # Fallback 1: Extract JSON pattern
+            json_match = re.search(r"(\{[\s\S]*?\})", cleaned_raw)
+            if json_match:
+                try:
+                    data = json.loads(json_match.group(1))
+                except Exception:
+                    pass
+
+            # Fallback 2: Check for failed_generation pattern in error strings
+            if not data:
+                match = re.search(r'["\']failed_generation["\']\s*:\s*["\']({[\s\S]+?})["\']', cleaned_raw)
+                if match:
+                    try:
+                        cleaned_fg = match.group(1).replace('\\"', '"').replace('\\n', '\n')
+                        data = json.loads(cleaned_fg)
+                    except Exception:
+                        pass
+
+    if isinstance(data, dict):
+        if "arguments" in data and isinstance(data["arguments"], dict):
+            data = data["arguments"]
+        elif "arguments" in data and isinstance(data["arguments"], str):
+            try:
+                data = json.loads(data["arguments"])
+            except Exception:
+                pass
+
+        if isinstance(data, dict):
+            spoken_text = data.get("spoken_reply_text") or data.get("response") or data.get("reply")
+            if spoken_text and isinstance(spoken_text, str):
+                spoken_text = _sanitize_llm_text(spoken_text)
+                spoken_text = _check_and_fix_domain_leakage(spoken_text, domain=domain, language="en")
+                intent_data = data.get("intent_analysis")
+                if not isinstance(intent_data, dict):
+                    intent_data = {"intent": data.get("intent", "DISCOVERY"), "confidence_score": 1.0, "entities": {}}
+                
+                # Ensure entities dictionary has safe ExtractedEntities parsing
+                entities_raw = intent_data.get("entities")
+                if isinstance(entities_raw, dict):
+                    try:
+                        parsed_entities = ExtractedEntities(**entities_raw)
+                    except Exception:
+                        parsed_entities = ExtractedEntities()
+                else:
+                    parsed_entities = ExtractedEntities()
+
+                return CombinedResponseAnalysis(
+                    intent_analysis=IntentAnalysis(
+                        intent=intent_data.get("intent", "DISCOVERY"),
+                        confidence_score=float(intent_data.get("confidence_score", 1.0)),
+                        entities=parsed_entities
+                    ),
+                    spoken_reply_text=spoken_text
+                )
+
+    # Fallback 3: If raw string is plain non-JSON text, use it as spoken reply text
+    if isinstance(raw, str) and raw.strip():
+        cleaned_text = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.IGNORECASE)
+        cleaned_text = re.sub(r"\s*```$", "", cleaned_text).strip()
+        if cleaned_text and not cleaned_text.startswith("{") and not ("Error code:" in cleaned_text or "400" in cleaned_text):
+            cleaned_text = _sanitize_llm_text(cleaned_text)
+            cleaned_text = _check_and_fix_domain_leakage(cleaned_text, domain=domain, language="en")
+            return CombinedResponseAnalysis(
+                intent_analysis=IntentAnalysis(intent="DISCOVERY", confidence_score=1.0, entities=ExtractedEntities()),
+                spoken_reply_text=cleaned_text
+            )
+
+    return None
+
+async def generate_combined_intent_and_response(
+    user_input: str,
+    history: List[Dict[str, str]],
+    context: str = "",
+    domain: str = "real_estate",
+    system_prompt: Optional[str] = None
+) -> CombinedResponseAnalysis:
+    """
+    Fast path: queries Groq using llama-3.3-70b-versatile / gpt-oss-20b to extract slots AND generate response.
+    Supports dynamic system_prompt override for custom configuration-driven agents.
+    """
+    if system_prompt:
+        prompt_template = f"""You are an AI voice assistant on a live phone call.
+Follow this persona and system prompt strictly:
+{system_prompt}
+
+Perform two tasks in a single turn:
+1. Extract user intent and key entity slots based on their latest message.
+2. Generate your spoken reply text naturally matching the instructions and persona above in the SAME language as the user.
+
+Use standard INTENT classes: GREETING, DISCOVERY, QUALIFICATION, LIVE_SEARCH, OBJECTION_HANDLING, SCHEDULING, CLOSING.
+
+Spoken Response Rules:
+- Match the user's language: If the user speaks Hindi or Hinglish, respond in natural spoken Hindi/Hinglish. If English, respond in English.
+- Keep responses short (15-25 words max). Plain spoken sentences. NEVER use bullet points, tables, lists, or markdown formatting.
+- Stay strictly in character according to your assigned system prompt.
+- STRICT ISOLATION RULE: You are ONLY this assigned agent persona. Do NOT under any circumstances adopt any other identity (such as Priya, Suncity Apartments, or Aarohi) unless explicitly stated in your prompt above.
+
+Respond ONLY with a valid JSON object matching this schema:
+{{
+  "intent_analysis": {{
+    "intent": "GREETING | DISCOVERY | QUALIFICATION | LIVE_SEARCH | OBJECTION_HANDLING | SCHEDULING | CLOSING",
+    "confidence_score": 1.0,
+    "entities": {{}}
+  }},
+  "spoken_reply_text": "Your natural spoken response here"
+}}
+"""
+    elif domain in ("education", "education_counselling", "aarohi"):
+        prompt_template = COMBINED_EXTRACTION_EDUCATION_PROMPT
+    elif domain in ("real_estate", "real_estate_sales", "priya"):
+        prompt_template = COMBINED_EXTRACTION_REAL_ESTATE_PROMPT
+    else:
+        prompt_template = f"""You are a professional AI voice assistant on a live phone call.
+Respond naturally, concisely (15-25 words max), and stay strictly in character.
+
+Respond ONLY with a valid JSON object matching this schema:
+{{
+  "intent_analysis": {{
+    "intent": "GREETING | DISCOVERY | QUALIFICATION | LIVE_SEARCH | OBJECTION_HANDLING | SCHEDULING | CLOSING",
+    "confidence_score": 1.0,
+    "entities": {{}}
+  }},
+  "spoken_reply_text": "Your natural spoken response here"
+}}
+"""
+
+    messages = [
+        {"role": "system", "content": prompt_template + (f"\n\nLive Context: {context}" if context else "")}
+    ]
+    
+    for msg in history[-8:]:
+        messages.append({"role": msg["role"], "content": msg["content"]})
+        
     messages.append({"role": "user", "content": user_input})
     
     target_model = _sanitize_model_name(getattr(cfg, "VERSATILE_MODEL_NAME", cfg.MODEL_NAME))
@@ -369,29 +517,39 @@ Respond ONLY with a valid JSON object matching this schema:
         response = await _client.chat.completions.create(
             model=target_model,
             messages=messages,
-            response_format={"type": "json_object"},
-            temperature=0.4,
-            max_tokens=250
+            temperature=0.3,
+            max_tokens=150
         )
         
         raw_json = response.choices[0].message.content or "{}"
+        parsed = _parse_combined_response_payload(raw_json, domain=domain)
+        if parsed:
+            return parsed
         data = json.loads(raw_json)
         if "spoken_reply_text" in data and data["spoken_reply_text"]:
             data["spoken_reply_text"] = _sanitize_llm_text(data["spoken_reply_text"])
             data["spoken_reply_text"] = _check_and_fix_domain_leakage(data["spoken_reply_text"], domain=domain, language="en")
         return CombinedResponseAnalysis(**data)
     except Exception as e:
-        logger.error(f"Primary model {target_model} failed in combined response: {e}. Retrying with fallback model qwen/qwen3.8-27b...")
+        logger.warning(f"Primary model {target_model} call hit exception: {e}. Attempting payload extraction or retry...")
+        parsed_err = _parse_combined_response_payload(str(e), domain=domain)
+        if parsed_err:
+            logger.info("Successfully extracted valid response payload from model exception body.")
+            return parsed_err
+
         try:
-            fallback_model = "qwen/qwen3.8-27b" if target_model != "qwen/qwen3.8-27b" else "openai/gpt-oss-20b"
+            is_groq = isinstance(_client, AsyncGroq)
+            fallback_model = "qwen/qwen3.8-27b" if (is_groq and target_model != "qwen/qwen3.8-27b") else "openai/gpt-oss-20b"
             retry_resp = await _client.chat.completions.create(
                 model=fallback_model,
                 messages=messages,
-                response_format={"type": "json_object"},
                 temperature=0.4,
                 max_tokens=250
             )
             raw_json = retry_resp.choices[0].message.content or "{}"
+            parsed_retry = _parse_combined_response_payload(raw_json, domain=domain)
+            if parsed_retry:
+                return parsed_retry
             data = json.loads(raw_json)
             if "spoken_reply_text" in data and data["spoken_reply_text"]:
                 data["spoken_reply_text"] = _sanitize_llm_text(data["spoken_reply_text"])
@@ -399,7 +557,13 @@ Respond ONLY with a valid JSON object matching this schema:
             return CombinedResponseAnalysis(**data)
         except Exception as retry_err:
             logger.error(f"Fallback model retry also failed: {retry_err}")
-            fallback_text = "I'd be happy to help with that. Could you tell me a bit more about what options you are looking for?"
+            clean_d = (domain or "").strip().lower()
+            if clean_d in ("education", "education_counselling", "aarohi"):
+                fallback_text = "I'm here to help with your course and career questions. What would you like to explore?"
+            elif clean_d in ("real_estate", "real_estate_sales", "priya"):
+                fallback_text = "I'd be happy to help with that. Could you tell me a bit more about what options you are looking for?"
+            else:
+                fallback_text = "I'm sorry, I missed that. Could you please repeat your question?"
             return CombinedResponseAnalysis(
                 intent_analysis=IntentAnalysis(intent="DISCOVERY", confidence_score=0.0, entities=ExtractedEntities()),
                 spoken_reply_text=fallback_text
@@ -433,12 +597,12 @@ _AAROHI_PERSONA = (
 
 
 def _sanitize_model_name(model_name: Optional[str]) -> str:
-    if not model_name:
+    is_groq = isinstance(_client, AsyncGroq)
+    if is_groq:
+        if model_name in ("qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"):
+            return model_name
         return "qwen/qwen3.8-27b"
-    model_str = str(model_name).strip().lower()
-    if any(m in model_str for m in ["compound", "llama3-70b-8192", "llama3-8b-8192", "mixtral-8x7b-32768", "llama-3.3-70b-versatile"]):
-        return "qwen/qwen3.8-27b"
-    return model_name
+    return model_name or "qwen/qwen3.8-27b"
 
 
 def _sanitize_llm_text(text: str | None) -> str:

@@ -11,7 +11,6 @@ import {
   sendPasswordResetEmail,
 } from 'firebase/auth';
 
-const googleProvider = new GoogleAuthProvider();
 
 export default function LoginPage() {
   const { currentRole, loading } = useAuth();
@@ -57,7 +56,8 @@ export default function LoginPage() {
       }
       // onAuthStateChanged in AuthContext handles redirect
     } catch (err) {
-      setError(friendlyError(err.code));
+      console.error('Email Auth Error:', err);
+      setError(friendlyError(err.code, err.message));
     } finally {
       setSubmitting(false);
     }
@@ -73,7 +73,8 @@ export default function LoginPage() {
       setInfo('Reset link sent! Check your inbox.');
       setMode('login');
     } catch (err) {
-      setError(friendlyError(err.code));
+      console.error('Password Reset Error:', err);
+      setError(friendlyError(err.code, err.message));
     } finally {
       setSubmitting(false);
     }
@@ -84,11 +85,14 @@ export default function LoginPage() {
     clearMessages();
     setSubmitting(true);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await signInWithPopup(auth, provider);
       // Account is auto-created if it doesn't exist
     } catch (err) {
+      console.error('Google Sign-in Error:', err);
       if (err.code !== 'auth/popup-closed-by-user') {
-        setError(friendlyError(err.code));
+        setError(friendlyError(err.code, err.message));
       }
     } finally {
       setSubmitting(false);
@@ -96,18 +100,24 @@ export default function LoginPage() {
   };
 
   // ── Error messages ───────────────────────────────────────────────────────
-  function friendlyError(code) {
+  function friendlyError(code, rawMessage) {
     const map = {
-      'auth/user-not-found':        'No account found with this email.',
-      'auth/wrong-password':        'Incorrect password. Try again.',
-      'auth/email-already-in-use':  'An account with this email already exists.',
-      'auth/weak-password':         'Password must be at least 6 characters.',
-      'auth/invalid-email':         'Please enter a valid email address.',
-      'auth/too-many-requests':     'Too many attempts. Please try again later.',
-      'auth/network-request-failed':'Network error. Check your connection.',
-      'auth/invalid-credential':    'Invalid email or password.',
+      'auth/user-not-found':                       'No account found with this email.',
+      'auth/wrong-password':                       'Incorrect password. Try again.',
+      'auth/email-already-in-use':                 'An account with this email already exists.',
+      'auth/weak-password':                        'Password must be at least 6 characters.',
+      'auth/invalid-email':                        'Please enter a valid email address.',
+      'auth/too-many-requests':                    'Too many attempts. Please try again later.',
+      'auth/network-request-failed':               'Network error. Check your connection.',
+      'auth/invalid-credential':                   'Invalid email or password.',
+      'auth/operation-not-allowed':                'Google Sign-In is disabled in Firebase Console. Go to Authentication > Sign-in method to enable Google.',
+      'auth/popup-blocked':                        'Sign-in popup was blocked by your browser. Please allow popups for localhost.',
+      'auth/unauthorized-domain':                  'This domain is not authorized in Firebase Console > Authentication > Settings > Authorized domains.',
+      'auth/account-exists-with-different-credential': 'An account already exists with the same email using a different sign-in method.',
+      'auth/cancelled-popup-request':              'Sign-in cancelled because another popup request was started.',
+      'auth/internal-error':                       'Firebase internal error. Check browser storage settings or try again.',
     };
-    return map[code] || 'Something went wrong. Please try again.';
+    return map[code] || rawMessage || code || 'Something went wrong. Please try again.';
   }
 
   return (

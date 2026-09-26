@@ -164,7 +164,7 @@ WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "http://localhost:3000")
 DEFAULT_CARTESIA_VOICE_ID = "95d51f79-c397-46f9-b49a-23763d3eaa2d"
 VALID_STT_PROVIDERS = {"groq", "deepgram", "indic_seamless", "smallest"}
 VALID_TTS_PROVIDERS = {"edge", "cartesia", "parler", "indic_parler", "sarvam", "smallest"}
-VALID_AGENT_TYPES = {"real_estate_sales", "finance", "insurance", "education"}
+VALID_AGENT_TYPES = {"real_estate_sales", "finance", "insurance", "education", "customer_support", "hospitality", "general", "custom"}
 AGENT_TYPE_LABELS = {
     "real_estate_sales": "Real Estate team",
     "finance": "Finance advisory team",
@@ -701,9 +701,11 @@ def _normalize_agent_record(data: dict) -> dict:
     normalized["cartesia_voice_id"] = str(normalized.get("cartesia_voice_id") or DEFAULT_CARTESIA_VOICE_ID).strip()
     normalized["parler_description"] = str(normalized.get("parler_description") or "").strip()
     normalized["assigned_email"] = str(normalized.get("assigned_email") or "").strip().lower()
-    agent_type = str(normalized.get("agent_type") or "real_estate_sales").strip()
-    normalized["agent_type"] = agent_type if agent_type in VALID_AGENT_TYPES else "real_estate_sales"
-    normalized["script"] = str(normalized.get("script") or "").strip()
+    agent_type = str(normalized.get("agent_type") or "custom").strip()
+    normalized["agent_type"] = agent_type if (agent_type in VALID_AGENT_TYPES or agent_type) else "custom"
+    script_content = str(normalized.get("script") or normalized.get("system_prompt") or "").strip()
+    normalized["script"] = script_content
+    normalized["system_prompt"] = script_content
     normalized["data_fields"] = _clean_agent_data_fields(normalized.get("data_fields"))
     return normalized
 
@@ -7991,17 +7993,23 @@ async def voice_demo_text_turn(req: VoiceDemoTextTurnRequest):
     agent = None
     if req.agentId:
         try:
-            agent = await db.get_agent(req.agentId)
+            from runtime_resolver import AgentRuntimeResolver
+            agent = await AgentRuntimeResolver.resolve(req.agentId)
         except Exception:
-            pass
+            try:
+                agent = await db.get_agent(req.agentId)
+            except Exception:
+                pass
 
-    domain = "education"
+    domain = "custom"
     if agent:
         agent_type = str(agent.get("agent_type", "")).lower()
         if "real_estate" in agent_type:
             domain = "real_estate"
         elif "education" in agent_type:
             domain = "education"
+        else:
+            domain = agent_type or "custom"
     elif req.agentId and "real" in str(req.agentId).lower():
         domain = "real_estate"
 
@@ -8013,7 +8021,7 @@ async def voice_demo_text_turn(req: VoiceDemoTextTurnRequest):
                 clean_history.append({"role": str(item["role"]), "content": str(item["content"])})
 
     try:
-        system_prompt = (agent.get("script") or agent.get("system_prompt")) if agent else None
+        system_prompt = (agent.get("system_prompt") or agent.get("script") or agent.get("base_prompt")) if agent else None
         analysis = await generate_combined_intent_and_response(
             user_input=user_text,
             history=clean_history,

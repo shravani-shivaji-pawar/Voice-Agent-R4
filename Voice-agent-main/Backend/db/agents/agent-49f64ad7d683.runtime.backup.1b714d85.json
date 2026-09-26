@@ -1,0 +1,225 @@
+{
+  "agent_name": "Mock Interview Coach",
+  "voice_id": "emily",
+  "conversation_flow_id": "flowv2_c78f0f20193f",
+  "global_prompt": "Website intelligence source: https://freemockinterview.com/.\nComplete Company Knowledge Summary:\n# Free Mock Interview Practice Tool - Knowledge Base\n\n## Company Overview\nBased on freemockinterview.com public website data.\n\n## Mission & Vision\nTo provide high quality solutions and services.\n\n## Products\n* **Online Courses**: Available solution.\n* **Interview Preparation Tool**: Available solution.\n* **\ud83d\udccb Introduction**: Available solution.\n* **\ud83c\udfaf Quick Summary**: Available solution.\n* **\ud83d\udd0d What Information We Collect**: Available solution.\n* **1. Information You Provide Voluntarily**: Available solution.\n* **2. Automatically Collected Information**: Available solution.\n* **3. Information We Do NOT Collect**: Available solution.\n\n## Services\n* Support and advisory for Online Courses.\n* Support and advisory for Interview Preparation Tool.\n* Support and advisory for \ud83d\udccb Introduction.\n* Support and advisory for \ud83c\udfaf Quick Summary.\n* Support and advisory for \ud83d\udd0d What Information We Collect.\n* Support and advisory for 1. Information You Provide Voluntarily.\n* Support and advisory for 2. Automatically Collected Information.\n* Support and advisory for 3. Information We Do NOT Collect.\n\n## Features\n* Interview Review Master Your Next Job Interview with Expert Preparation Welcome to the most comprehensive free mock interview platform trusted by over 25,000+ job seekers .\n* About FreeMockInterview Empowering job seekers worldwide with free, comprehensive interview preparation tools to build confidence and secure their dream careers.\n* Secure Hosting: Our website is hosted on secure, reputable platforms with robust security infrastructure.\n\n## Industries Served\nEducation, Finance, Government, Healthcare\n\n## Customer Segments\nIndividuals, small businesses, and enterprise clients.\n\n## Pricing\nPricing information is not publicly available.\n\n## FAQs\n**Q: How many times should I practice before a real interview?**\n**A:** Please consult our advisors for exact specifications.\n\n**Q: What's the difference between behavioral and situational questions?**\n**A:** Please consult our advisors for exact specifications.\n\n**Q: Ready to Practice?**\n**A:** Please consult our advisors for exact specifications.\n\n**Q: \u2728 Why Choose FreeMockInterview?**\n**A:** Please consult our advisors for exact specifications.\n\n**Q: Ready to Ace Your Next Interview?**\n**A:** Please consult our advisors for exact specifications.\n\n**Q: Ready to Practice?**\n**A:** Please consult our advisors for exact specifications.\n\n**Q: Ready to Practice Interviews?**\n**A:** Please consult our advisors for exact specifications.\n\n**Q: Understand the Terms?**\n**A:** Please consult our advisors for exact specifications.\n\n\n## Technologies\nAI, Apis, Infrastructure, Security\n\n## Contact Information\n* **Website**: https://freemockinterview.com/\n\n## Integrations\nSupported through developer REST APIs and webhooks.\n\n## Security & Compliance\nEnterprise-grade data security protocols and privacy standards.\n\n## Careers\nOpportunities available for talented individuals. Flexible remote work culture.\n\n## Blogs & News\nLatest product updates and industry announcements published on company portal.\n\n## Policies & Compliance\nGDPR and privacy guidelines strictly followed.\n\n## Support\nHelpdesk support hours: Monday to Friday 9 AM to 6 PM.\n\n## Company Highlights & Key Facts\nProven customer satisfaction track record.\n\n## Competitive Advantages\n* Trusted and secure operations.\n* Personalized service model.\n\n## Frequently Discussed Topics\nProduct features, onboarding timeline, pricing requests, custom integrations.\n\n## Semantic Keywords & Synonyms\nAI, Apis, Infrastructure, Security, Education, Finance, Government, Healthcare, Free Mock Interview Practice Tool, support, helpdesk, pricing, pricing plans\n\n## Relationships & Use Cases\nProvides Real Estate Sales automation solutions for global clients.\nUse only verified website facts and keep unsupported claims out of the call.",
+  "conversationFlow": {
+    "conversation_flow_id": "flowv2_c78f0f20193f",
+    "version": 2,
+    "schema_version": "2.0",
+    "global_prompt": "Website intelligence source: https://freemockinterview.com/.\nComplete Company Knowledge Summary:\n# Free Mock Interview Practice Tool - Knowledge Base\n\n## Company Overview\nBased on freemockinterview.com public website data.\n\n## Mission & Vision\nTo provide high quality solutions and services.\n\n## Products\n* **Online Courses**: Available solution.\n* **Interview Preparation Tool**: Available solution.\n* **\ud83d\udccb Introduction**: Available solution.\n* **\ud83c\udfaf Quick Summary**: Available solution.\n* **\ud83d\udd0d What Information We Collect**: Available solution.\n* **1. Information You Provide Voluntarily**: Available solution.\n* **2. Automatically Collected Information**: Available solution.\n* **3. Information We Do NOT Collect**: Available solution.\n\n## Services\n* Support and advisory for Online Courses.\n* Support and advisory for Interview Preparation Tool.\n* Support and advisory for \ud83d\udccb Introduction.\n* Support and advisory for \ud83c\udfaf Quick Summary.\n* Support and advisory for \ud83d\udd0d What Information We Collect.\n* Support and advisory for 1. Information You Provide Voluntarily.\n* Support and advisory for 2. Automatically Collected Information.\n* Support and advisory for 3. Information We Do NOT Collect.\n\n## Features\n* Interview Review Master Your Next Job Interview with Expert Preparation Welcome to the most comprehensive free mock interview platform trusted by over 25,000+ job seekers .\n* About FreeMockInterview Empowering job seekers worldwide with free, comprehensive interview preparation tools to build confidence and secure their dream careers.\n* Secure Hosting: Our website is hosted on secure, reputable platforms with robust security infrastructure.\n\n## Industries Served\nEducation, Finance, Government, Healthcare\n\n## Customer Segments\nIndividuals, small businesses, and enterprise clients.\n\n## Pricing\nPricing information is not publicly available.\n\n## FAQs\n**Q: How many times should I practice before a real interview?**\n**A:** Please consult our advisors for exact specifications.\n\n**Q: What's the difference between behavioral and situational questions?**\n**A:** Please consult our advisors for exact specifications.\n\n**Q: Ready to Practice?**\n**A:** Please consult our advisors for exact specifications.\n\n**Q: \u2728 Why Choose FreeMockInterview?**\n**A:** Please consult our advisors for exact specifications.\n\n**Q: Ready to Ace Your Next Interview?**\n**A:** Please consult our advisors for exact specifications.\n\n**Q: Ready to Practice?**\n**A:** Please consult our advisors for exact specifications.\n\n**Q: Ready to Practice Interviews?**\n**A:** Please consult our advisors for exact specifications.\n\n**Q: Understand the Terms?**\n**A:** Please consult our advisors for exact specifications.\n\n\n## Technologies\nAI, Apis, Infrastructure, Security\n\n## Contact Information\n* **Website**: https://freemockinterview.com/\n\n## Integrations\nSupported through developer REST APIs and webhooks.\n\n## Security & Compliance\nEnterprise-grade data security protocols and privacy standards.\n\n## Careers\nOpportunities available for talented individuals. Flexible remote work culture.\n\n## Blogs & News\nLatest product updates and industry announcements published on company portal.\n\n## Policies & Compliance\nGDPR and privacy guidelines strictly followed.\n\n## Support\nHelpdesk support hours: Monday to Friday 9 AM to 6 PM.\n\n## Company Highlights & Key Facts\nProven customer satisfaction track record.\n\n## Competitive Advantages\n* Trusted and secure operations.\n* Personalized service model.\n\n## Frequently Discussed Topics\nProduct features, onboarding timeline, pricing requests, custom integrations.\n\n## Semantic Keywords & Synonyms\nAI, Apis, Infrastructure, Security, Education, Finance, Government, Healthcare, Free Mock Interview Practice Tool, support, helpdesk, pricing, pricing plans\n\n## Relationships & Use Cases\nProvides Real Estate Sales automation solutions for global clients.\nUse only verified website facts and keep unsupported claims out of the call.",
+    "start_node_id": "start",
+    "nodes": [
+      {
+        "id": "start",
+        "name": "Greeting",
+        "type": "conversation",
+        "instruction": {
+          "type": "prompt",
+          "text": "Follow the published Flow V2 node 'Greeting' and keep the reply concise."
+        },
+        "response": "Hello, this is Mock Interview Coach. Am I speaking with {{name}}?",
+        "edges": [
+          {
+            "id": "edge_start_1_discovery",
+            "condition": "confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "confirm"
+            },
+            "destination_node_id": "discovery"
+          },
+          {
+            "id": "edge_start_2_end",
+            "condition": "deny",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "deny"
+            },
+            "destination_node_id": "end"
+          },
+          {
+            "id": "edge_start_3_fallback",
+            "condition": "unclear",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "unclear"
+            },
+            "destination_node_id": "fallback"
+          }
+        ],
+        "start_speaker": "agent",
+        "intent_triggers": [
+          "call_connected"
+        ]
+      },
+      {
+        "id": "discovery",
+        "name": "Discovery",
+        "type": "conversation",
+        "instruction": {
+          "type": "prompt",
+          "text": "Follow the published Flow V2 node 'Discovery' and keep the reply concise."
+        },
+        "response": "Could you share a little about what you are looking for?",
+        "edges": [
+          {
+            "id": "edge_discovery_1_confirm_followup",
+            "condition": "provide info",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "provide info"
+            },
+            "destination_node_id": "confirm_followup"
+          },
+          {
+            "id": "edge_discovery_2_confirm_followup",
+            "condition": "confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "confirm"
+            },
+            "destination_node_id": "confirm_followup"
+          },
+          {
+            "id": "edge_discovery_3_fallback",
+            "condition": "unclear",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "unclear"
+            },
+            "destination_node_id": "fallback"
+          }
+        ],
+        "intent_triggers": [
+          "confirm",
+          "provide_info"
+        ]
+      },
+      {
+        "id": "fallback",
+        "name": "Clarify",
+        "type": "fallback",
+        "instruction": {
+          "type": "prompt",
+          "text": "Follow the published Flow V2 node 'Clarify' and keep the reply concise."
+        },
+        "response": "Sorry, I did not catch that clearly. Could you repeat it once?",
+        "edges": [
+          {
+            "id": "edge_fallback_1_discovery",
+            "condition": "provide info",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "provide info"
+            },
+            "destination_node_id": "discovery"
+          },
+          {
+            "id": "edge_fallback_2_discovery",
+            "condition": "confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "confirm"
+            },
+            "destination_node_id": "discovery"
+          },
+          {
+            "id": "edge_fallback_3_end",
+            "condition": "deny",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "deny"
+            },
+            "destination_node_id": "end"
+          }
+        ],
+        "intent_triggers": [
+          "unclear"
+        ],
+        "fallback": {
+          "max_attempts": 2,
+          "escalation_target": "end"
+        }
+      },
+      {
+        "id": "confirm_followup",
+        "name": "Confirm Follow-up",
+        "type": "conversation",
+        "instruction": {
+          "type": "prompt",
+          "text": "Follow the published Flow V2 node 'Confirm Follow-up' and keep the reply concise."
+        },
+        "response": "Thanks. I will have the team follow up with the right details.",
+        "edges": [
+          {
+            "id": "edge_confirm_followup_1_end",
+            "condition": "confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "confirm"
+            },
+            "destination_node_id": "end"
+          },
+          {
+            "id": "edge_confirm_followup_2_end",
+            "condition": "deny",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "deny"
+            },
+            "destination_node_id": "end"
+          },
+          {
+            "id": "edge_confirm_followup_3_fallback",
+            "condition": "unclear",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "unclear"
+            },
+            "destination_node_id": "fallback"
+          }
+        ],
+        "intent_triggers": [
+          "confirm",
+          "provide_info"
+        ]
+      },
+      {
+        "id": "end",
+        "name": "End",
+        "type": "end",
+        "instruction": {
+          "type": "prompt",
+          "text": "Follow the published Flow V2 node 'End' and keep the reply concise."
+        },
+        "response": "Thank you. Have a good day.",
+        "edges": [],
+        "intent_triggers": [
+          "confirm",
+          "deny"
+        ]
+      }
+    ]
+  },
+  "tts_provider": "smallest",
+  "stt_provider": "smallest",
+  "smallest_model": "lightning_v3.1",
+  "provider_config": {
+    "stt_provider": "smallest",
+    "tts_provider": "smallest",
+    "cartesia_voice_id": "95d51f79-c397-46f9-b49a-23763d3eaa2d",
+    "smallest_model": "lightning_v3.1",
+    "parler_description": ""
+  },
+  "agent_metadata": {
+    "agent_type": "real_estate_sales",
+    "assigned_email": "",
+    "client_id": null,
+    "flow_v2_live": true,
+    "flow_v2_artifact_path": "db\\agents\\agent-49f64ad7d683.188571a5.live.flow.v2.json",
+    "flow_v2_published_at": "2026-09-25T20:23:21.488956",
+    "flow_v2_published_by": "shravani772004@gmail.com",
+    "flow_v2_runtime_backup_path": "db\\agents\\agent-49f64ad7d683.runtime.backup.70839094.json"
+  }
+}

@@ -267,8 +267,8 @@ FALLBACK_VOICE_CATALOG: List[Dict[str, Any]] = [
     },
 ]
 
-_CACHED_CATALOG: List[Dict[str, Any]] | None = None
-_LAST_CATALOG_FETCH: float = 0.0
+_CACHED_CATALOG: List[Dict[str, Any]] | None = FALLBACK_VOICE_CATALOG
+_LAST_CATALOG_FETCH: float = time.time()
 CATALOG_CACHE_TTL_SECONDS = 3600.0  # 1 hour in-memory cache
 
 

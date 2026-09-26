@@ -1494,8 +1494,8 @@ class DatabaseManager:
                         data.get("cartesia_voice_id"),
                         data.get("parler_description"),
                         data.get("assigned_email"),
-                        data.get("agent_type", "real_estate_sales"),
-                        data.get("script"),
+                        data.get("agent_type") or "custom",
+                        data.get("script") if ("script" in data and data.get("script") is not None) else data.get("system_prompt"),
                         data.get("greeting_response") or data.get("greeting"),
                         json.dumps(data.get("data_fields", [])),
                         data.get("schema_path"),
@@ -2375,6 +2375,27 @@ class DatabaseManager:
                 conn.close()
         return await run_in_executor(_sync)
 
+    async def get_latest_applied_script_draft_for_agent(self, agent_id: str) -> Optional[dict]:
+        def _sync():
+            conn = _get_connection()
+            try:
+                row = conn.execute(
+                    """SELECT * FROM generated_script_drafts
+                       WHERE agent_id=? AND status IN ('published_live', 'flow_draft_saved')
+                       ORDER BY CASE WHEN status = 'published_live' THEN 1 ELSE 2 END,
+                                COALESCE(reviewed_at, created_at) DESC
+                       LIMIT 1""",
+                    (agent_id,),
+                ).fetchone()
+                return _decode_script_draft(dict(row)) if row else None
+            finally:
+                conn.close()
+        return await run_in_executor(_sync)
+
+    def invalidate_agent_cache(self, agent_id: str) -> None:
+        if agent_id:
+            _CACHE_GET_AGENT.pop(agent_id, None)
+
     async def mark_generated_script_draft_reviewed(
         self,
         draft_id: str,
@@ -2390,6 +2411,7 @@ class DatabaseManager:
                 row = conn.execute("SELECT * FROM generated_script_drafts WHERE id=?", (draft_id,)).fetchone()
                 if not row:
                     raise ValueError(f"generated script draft not found: {draft_id}")
+                agent_id = row["agent_id"]
                 reviewed_at = datetime.now().isoformat()
                 conn.execute(
                     """UPDATE generated_script_drafts
@@ -2409,6 +2431,7 @@ class DatabaseManager:
                     ),
                 )
                 conn.commit()
+                _CACHE_GET_AGENT.pop(agent_id, None)
                 updated = conn.execute("SELECT * FROM generated_script_drafts WHERE id=?", (draft_id,)).fetchone()
                 return _decode_script_draft(dict(updated))
             finally:

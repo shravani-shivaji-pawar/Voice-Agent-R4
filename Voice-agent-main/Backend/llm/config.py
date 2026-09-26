@@ -20,9 +20,9 @@ GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 
 # ── Model ──────────────────────────────────────────────────────────────────────
 # Active default models (fastest, low-latency for voice turns):
-MODEL_NAME: str = os.getenv("LLM_MODEL", "qwen/qwen3.8-27b")
-FAST_MODEL_NAME: str = os.getenv("LLM_FAST_MODEL", "qwen/qwen3.8-27b")
-VERSATILE_MODEL_NAME: str = os.getenv("LLM_VERSATILE_MODEL", "qwen/qwen3.8-27b")
+MODEL_NAME: str = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
+FAST_MODEL_NAME: str = os.getenv("LLM_FAST_MODEL", "openai/gpt-oss-20b")
+VERSATILE_MODEL_NAME: str = os.getenv("LLM_VERSATILE_MODEL", "openai/gpt-oss-20b")
 
 # ── Generation Parameters ──────────────────────────────────────────────────────
 TEMPERATURE: float = 0.35      # balanced: not robotic (0.0) but not hallucinating (>0.7)
