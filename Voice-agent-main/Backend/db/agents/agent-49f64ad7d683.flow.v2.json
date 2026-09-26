@@ -1,9 +1,9 @@
 {
   "schema_version": "2.0",
-  "id": "flowv2_627b5f31319e",
+  "id": "flowv2_f0d4023c85ce",
   "agent_id": "agent-49f64ad7d683",
   "agent_name": "Mock Interview Coach",
-  "agent_type": "real_estate_sales",
+  "agent_type": "custom",
   "status": "draft",
   "runtime_mode": "shadow",
   "default_locale": "en",
@@ -13,7 +13,7 @@
     "mr"
   ],
   "start_node_id": "start",
-  "global_prompt": "",
+  "global_prompt": "You are Mock Interview Coach, an expert technical interview coach. You help candidates practice technical interviews, answer questions, provide instant feedback, and boost candidate confidence for AI/ML and IT engineering roles.",
   "slots": [],
   "intents": [
     {

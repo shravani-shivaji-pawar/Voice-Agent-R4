@@ -5898,6 +5898,73 @@ async def apply_script_draft_to_agent_flow(draft_id: str, request: Request):
     return preview
 
 
+@app.get("/api/agents/{agent_id}/flow")
+async def get_agent_flow_endpoint(agent_id: str, request: Request):
+    agent = await db.get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    preview = await _load_agent_flow_preview(agent)
+    return preview
+
+
+@app.put("/api/agents/{agent_id}/flow", dependencies=[Depends(require_auth)])
+async def update_agent_flow_endpoint(agent_id: str, request: Request):
+    agent = await db.get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    
+    flow, _ = await _load_agent_flow_v2_spec(agent)
+    if isinstance(body, dict) and "nodes" in body and isinstance(body["nodes"], list):
+        # Update editable node values
+        node_map = {n["id"]: n for n in flow.get("nodes", [])}
+        for edited in body["nodes"]:
+            nid = edited.get("id")
+            if nid in node_map:
+                if "label" in edited:
+                    node_map[nid]["label"] = edited["label"]
+                if "response_en" in edited:
+                    res = node_map[nid].get("response") or {}
+                    if isinstance(res, dict):
+                        res["en"] = edited["response_en"]
+                        node_map[nid]["response"] = res
+                if "collects" in edited and isinstance(edited["collects"], list):
+                    node_map[nid]["collects"] = edited["collects"]
+                if "transitions" in edited and isinstance(edited["transitions"], list):
+                    node_map[nid]["transitions"] = edited["transitions"]
+            else:
+                # Add new custom node
+                flow.setdefault("nodes", []).append({
+                    "id": nid,
+                    "type": edited.get("type", "message"),
+                    "label": edited.get("label", nid),
+                    "response": {"en": edited.get("response_en", "How can I help?")},
+                    "collects": edited.get("collects", []),
+                    "transitions": edited.get("transitions", []),
+                })
+
+    try:
+        validated = validate_flow_spec(flow)
+    except FlowSpecValidationError as exc:
+        raise HTTPException(status_code=400, detail=f"Flow validation failed: {exc}") from exc
+
+    actor = _actor_email(request)
+    artifact_path = _write_flow_v2_live_artifact(agent, validated)
+    flow_version = await db.create_agent_flow_version(
+        agent["id"],
+        client_id=agent.get("client_id"),
+        schema_version="2.0",
+        status="published",
+        runtime_mode="live",
+        artifact_path=artifact_path,
+        validation=validated.get("validation", {}),
+    )
+    return await _load_agent_flow_preview(agent)
+
+
 @app.post("/api/memory/agents/{agent_id}/collections", dependencies=[Depends(require_auth)])
 async def create_agent_memory_collection(agent_id: str, data: AgentMemoryCollectionCreate, request: Request):
     _require_memory_enabled()
