@@ -1219,3 +1219,11 @@
 {"timestamp": 1790438468.5763602, "event": "call_started", "start_node": "start"}
 {"timestamp": 1790438558.6796434, "event": "call_started", "start_node": "start"}
 {"timestamp": 1790438766.3644557, "event": "call_started", "start_node": "start"}
+{"timestamp": 1790449665.0128825, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790449689.5776737, "event": "call_started", "start_node": "node-1767592854176"}
+{"timestamp": 1790600520.584159, "event": "call_started", "start_node": "start"}
+{"timestamp": 1790601933.9642143, "event": "call_started", "start_node": "start"}
+{"timestamp": 1790601998.22093, "event": "call_started", "start_node": "start"}
+{"timestamp": 1790602115.5945656, "event": "call_started", "start_node": "start"}
+{"timestamp": 1790604005.1082692, "event": "call_started", "start_node": "start"}
+{"timestamp": 1790604059.405513, "event": "call_started", "start_node": "start"}

@@ -385,6 +385,19 @@ export default function RetellAgentWorkspacePage() {
             </div>
 
             <button
+              onClick={() => setActiveSection("overview")}
+              style={{
+                width: "100%", padding: "10px 14px", borderRadius: "8px", border: "none", textAlign: "left",
+                background: activeSection === "overview" ? "rgba(59, 130, 246, 0.15)" : "transparent",
+                color: activeSection === "overview" ? "#60A5FA" : "#A3A3A3",
+                fontWeight: activeSection === "overview" ? "700" : "500", fontSize: "13px",
+                cursor: "pointer", display: "flex", alignItems: "center", gap: "10px"
+              }}
+            >
+              <LayoutDashboard size={16} /> Overview
+            </button>
+
+            <button
               onClick={() => setActiveSection("flow")}
               style={{
                 width: "100%", padding: "10px 14px", borderRadius: "8px", border: "none", textAlign: "left",
@@ -394,7 +407,7 @@ export default function RetellAgentWorkspacePage() {
                 cursor: "pointer", display: "flex", alignItems: "center", gap: "10px"
               }}
             >
-              <GitBranch size={16} /> Conversational Flow
+              <GitBranch size={16} /> Build / Flow
             </button>
 
             <button
@@ -407,20 +420,7 @@ export default function RetellAgentWorkspacePage() {
                 cursor: "pointer", display: "flex", alignItems: "center", gap: "10px"
               }}
             >
-              <BookOpen size={16} /> Knowledge / Summary
-            </button>
-
-            <button
-              onClick={() => setActiveSection("overview")}
-              style={{
-                width: "100%", padding: "10px 14px", borderRadius: "8px", border: "none", textAlign: "left",
-                background: activeSection === "overview" ? "rgba(59, 130, 246, 0.15)" : "transparent",
-                color: activeSection === "overview" ? "#60A5FA" : "#A3A3A3",
-                fontWeight: activeSection === "overview" ? "700" : "500", fontSize: "13px",
-                cursor: "pointer", display: "flex", alignItems: "center", gap: "10px"
-              }}
-            >
-              <LayoutDashboard size={16} /> Agent Overview
+              <BookOpen size={16} /> Knowledge
             </button>
 
             <button
@@ -433,7 +433,7 @@ export default function RetellAgentWorkspacePage() {
                 cursor: "pointer", display: "flex", alignItems: "center", gap: "10px"
               }}
             >
-              <Mic size={16} /> Live Playground
+              <Mic size={16} /> Playground
             </button>
 
             <button

@@ -1,12 +1,32 @@
 'use client';
 import { useAuth, clientProfile } from '../context/AuthContext';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { 
-  Activity, Rocket, Bot, BrainCircuit, Building2, ClipboardEdit, ShieldCheck, Phone, PhoneCall,
-  Home, PlaySquare, BarChart3, LogOut 
+  Activity, 
+  Rocket, 
+  Bot, 
+  BrainCircuit, 
+  Building2, 
+  ClipboardEdit, 
+  ShieldCheck, 
+  Phone, 
+  PhoneCall,
+  Home, 
+  PlaySquare, 
+  BarChart3, 
+  LogOut,
+  GitBranch,
+  Layers,
+  Wrench,
+  CheckSquare,
+  FileSpreadsheet,
+  Globe,
+  Settings as SettingsIcon,
+  Sliders,
+  ChevronRight,
+  Zap
 } from 'lucide-react';
 
 const CRM_READINESS_UI_ENABLED = process.env.NEXT_PUBLIC_CRM_READINESS_UI_ENABLED === 'true';
@@ -21,214 +41,224 @@ export default function DashboardLayout({ children }) {
     if (!loading && !currentRole) router.push('/login');
   }, [loading, currentRole, router]);
 
-  if (loading || !currentRole || !user) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--color-white)' }}>
-      <div className="cc-spinner" />
-    </div>
-  );
+  if (loading || !currentRole || !user) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#09090B' }}>
+        <div className="scrape-loading-dot" style={{ background: '#3B82F6', width: '12px', height: '12px' }} />
+      </div>
+    );
+  }
 
-  const adminMenu = [
-    { label: 'Live Monitor', path: '/monitor', icon: <Activity size={18} strokeWidth={1.5} /> },
-    { label: 'Campaigns', path: '/campaigns', icon: <Rocket size={18} strokeWidth={1.5} /> },
-    { label: 'Voice Agents', path: '/agents', icon: <Bot size={18} strokeWidth={1.5} /> },
-    ...(SCRAPE_GENERATE_SCRIPT_ENABLED ? [{ label: 'Intelligence', path: '/intelligence', icon: <BrainCircuit size={18} strokeWidth={1.5} /> }] : []),
-    { label: 'Clients', path: '/clients', icon: <Building2 size={18} strokeWidth={1.5} /> },
-    { label: 'Demo Requests', path: '/demo-requests', icon: <ClipboardEdit size={18} strokeWidth={1.5} /> },
-    ...(CRM_READINESS_UI_ENABLED ? [{ label: 'CRM Readiness', path: '/crm-readiness', icon: <ShieldCheck size={18} strokeWidth={1.5} /> }] : []),
-    { label: 'Telephony', path: '/numbers', icon: <Phone size={18} strokeWidth={1.5} /> },
-    { label: 'Call Logs & QA', path: '/logs', icon: <PhoneCall size={18} strokeWidth={1.5} /> }
+  // ── Retell-Inspired Main Navigation ─────────────────────────────────
+  const sidebarGroups = [
+    {
+      title: "VOICE AGENT PLATFORM",
+      items: [
+        { label: "Voice Agents", path: "/agents", icon: <Bot size={17} /> },
+        { label: "Call History & Logs", path: "/logs", icon: <PhoneCall size={17} /> },
+        { label: "Analytics & Results", path: "/results", icon: <BarChart3 size={17} /> },
+        { label: "Outbound Campaigns", path: "/campaigns", icon: <Rocket size={17} /> },
+        { label: "Phone Numbers", path: "/numbers", icon: <Phone size={17} /> },
+        ...(SCRAPE_GENERATE_SCRIPT_ENABLED ? [{ label: "Knowledge Base", path: "/intelligence", icon: <BrainCircuit size={17} /> }] : []),
+        { label: "Live Playground", path: "/talk-live", icon: <PlaySquare size={17} /> },
+        ...(CRM_READINESS_UI_ENABLED ? [{ label: "CRM Integrations", path: "/crm-readiness", icon: <ShieldCheck size={17} /> }] : []),
+      ]
+    },
+    {
+      title: "WORKSPACE",
+      items: [
+        ...(currentRole === 'admin' ? [{ label: "Clients & Tenants", path: "/clients", icon: <Building2 size={17} /> }] : []),
+        { label: "Client Dashboard", path: "/client-dashboard", icon: <Home size={17} /> },
+      ]
+    }
   ];
-
-  const clientMenu = [
-    { label: 'Dashboard', path: '/client-dashboard', icon: <Home size={18} strokeWidth={1.5} /> },
-    { label: 'Voice Agents', path: '/agents', icon: <Bot size={18} strokeWidth={1.5} /> },
-    { label: 'Playground', path: '/demo', icon: <PlaySquare size={18} strokeWidth={1.5} /> },
-    { label: 'Calls & Results', path: '/results', icon: <BarChart3 size={18} strokeWidth={1.5} /> },
-    { label: 'Knowledge Base', path: '/intelligence', icon: <BrainCircuit size={18} strokeWidth={1.5} /> },
-    { label: 'Phone Numbers', path: '/numbers', icon: <Phone size={18} strokeWidth={1.5} /> },
-    { label: 'Campaigns', path: '/campaigns', icon: <Rocket size={18} strokeWidth={1.5} /> },
-  ];
-
-  const menu = currentRole === 'admin' ? adminMenu : clientMenu;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--color-white)', color: 'var(--color-black)', fontFamily: "var(--font-sans, sans-serif)" }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#09090B', color: '#F4F4F5', fontFamily: "var(--font-sans, sans-serif)" }}>
       
-      {/* ── Header ── */}
+      {/* ── Retell AI Top Header Bar ── */}
       <header style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         padding: '0 24px', height: '56px',
-        background: 'var(--color-white)',
-        borderBottom: '1px solid var(--color-border)',
+        background: '#121215',
+        borderBottom: '1px solid #222226',
         flexShrink: 0,
-        zIndex: 10
+        zIndex: 50
       }}>
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ fontSize: '16px', fontWeight: 600, letterSpacing: '-0.2px', color: 'var(--color-black)' }}>
-            Cosmic <span style={{ color: 'var(--color-text-muted)', fontWeight: 500 }}>Chameleon</span>
-          </span>
-          {/* Version badge — outline only, no fill */}
+        {/* Brand Logo & Platform Version */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }} onClick={() => router.push('/agents')}>
+            <div style={{ padding: '6px', borderRadius: '8px', background: 'linear-gradient(135deg, #3B82F6, #1D4ED8)', color: '#FFF' }}>
+              <Zap size={18} fill="#FFF" />
+            </div>
+            <span style={{ fontSize: '16px', fontWeight: 800, letterSpacing: '-0.3px', color: '#FFFFFF' }}>
+              Retell<span style={{ color: '#60A5FA', fontWeight: 600 }}>Voice</span>
+            </span>
+          </div>
+          
           <span style={{
             padding: '2px 8px',
-            border: '1px solid var(--color-border)',
-            borderRadius: '999px',
+            border: '1px solid #2A2A32',
+            borderRadius: '12px',
             fontSize: '11px',
-            color: 'var(--color-text-faint)',
-            letterSpacing: '0.04em',
-            fontFamily: 'var(--font-mono, monospace)'
+            fontWeight: '700',
+            color: '#60A5FA',
+            background: 'rgba(59, 130, 246, 0.12)',
+            fontFamily: 'monospace'
           }}>
-            v2.0 Beta
+            R4 Pro Engine
           </span>
         </div>
 
-        {/* Right side controls */}
+        {/* Top Right User & Client Profile Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           {currentRole === 'admin' && (
             <select
               style={{
-                background: 'var(--color-white)',
-                border: '1px solid var(--color-border)',
-                color: 'var(--color-black)',
-                fontSize: '13px',
+                background: '#1A1A1E',
+                border: '1px solid #2A2A32',
+                color: '#FFFFFF',
+                fontSize: '12px',
+                fontWeight: '600',
                 borderRadius: '6px',
                 padding: '6px 12px',
                 outline: 'none',
-                width: '192px',
+                width: '200px',
                 cursor: 'pointer'
               }}
               value={activeClient}
               onChange={(e) => setActiveClient(e.target.value)}
             >
               {Object.keys(clientProfile).map(key => (
-                <option key={key} value={key}>Viewing: {clientProfile[key].name}</option>
+                <option key={key} value={key}>Tenant: {clientProfile[key].name}</option>
               ))}
             </select>
           )}
 
-          {/* User profile — plain circle, no colored ring */}
+          {/* User Profile Tag */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             {user.photoURL ? (
               <img
                 src={user.photoURL}
                 alt={user.name}
                 referrerPolicy="no-referrer"
-                style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--color-border)' }}
+                style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #33333B' }}
               />
             ) : (
               <div style={{
-                width: '32px', height: '32px', borderRadius: '50%',
-                background: 'var(--color-cream)', border: '1px solid var(--color-border)',
+                width: '30px', height: '30px', borderRadius: '50%',
+                background: '#1F1F24', border: '1px solid #33333B',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '12px', fontWeight: 600, color: 'var(--color-black)'
+                fontSize: '12px', fontWeight: 700, color: '#60A5FA'
               }}>
                 {user.initials}
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-              <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-black)' }}>{user.name}</span>
-              <span style={{ fontSize: '11px', color: 'var(--color-text-faint)', textTransform: 'capitalize' }}>{currentRole} Access</span>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: '#FFFFFF' }}>{user.name}</span>
+              <span style={{ fontSize: '10px', color: '#A3A3A3', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{currentRole} Access</span>
             </div>
           </div>
 
+          {/* Logout Button */}
           <button
             onClick={logout}
             style={{
               display: 'flex', alignItems: 'center', gap: '6px',
-              padding: '6px 10px',
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--color-text-faint)',
-              fontSize: '13px',
+              padding: '6px 12px',
+              background: 'none',
+              border: '1px solid #2A2A32',
+              color: '#A3A3A3',
+              fontSize: '12px',
+              fontWeight: '600',
               borderRadius: '6px',
               cursor: 'pointer',
-              transition: 'color 100ms ease-out, background-color 100ms ease-out'
+              transition: 'all 100ms ease-out'
             }}
-            onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-black)'; e.currentTarget.style.background = 'var(--color-cream)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-text-faint)'; e.currentTarget.style.background = 'transparent'; }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#FFFFFF'; e.currentTarget.style.borderColor = '#3B82F6'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#A3A3A3'; e.currentTarget.style.borderColor = '#2A2A32'; }}
           >
-            <LogOut size={15} strokeWidth={1.5} /> Sign Out
+            <LogOut size={14} /> Sign Out
           </button>
         </div>
       </header>
 
-      {/* ── Main layout ── */}
+      {/* ── Main Layout Body ── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         
-        {/* ── Sidebar ── */}
+        {/* ── Retell-Style Left Sidebar Navigation ── */}
         <aside style={{
-          background: 'var(--color-white)',
-          borderRight: '1px solid var(--color-border)',
+          background: '#0E0E10',
+          borderRight: '1px solid #1E1E22',
           display: 'flex',
           flexDirection: 'column',
-          width: '220px',
+          width: '230px',
           flexShrink: 0
         }}>
-          {/* Section label */}
-          <div style={{
-            padding: '20px 16px 8px',
-            fontSize: '11px',
-            fontWeight: 600,
-            color: 'var(--color-text-faint)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.1em',
-            fontFamily: 'var(--font-mono, monospace)'
-          }}>
-            Main Menu
-          </div>
+          <nav style={{ flex: 1, padding: '16px 10px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {sidebarGroups.map(group => (
+              <div key={group.title}>
+                <div style={{
+                  fontSize: '10px',
+                  fontWeight: '800',
+                  color: '#52525B',
+                  textTransform: 'uppercase',
+                  letterSpacing: '1px',
+                  padding: '0 10px 8px 10px'
+                }}>
+                  {group.title}
+                </div>
 
-          <nav style={{ flex: 1, padding: '4px 8px', overflowY: 'auto' }}>
-            {menu.map(item => {
-              const isActive = pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  href={item.path}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    padding: '8px 10px',
-                    marginBottom: '2px',
-                    borderRadius: '6px',
-                    textDecoration: 'none',
-                    fontSize: '13px',
-                    fontWeight: isActive ? 500 : 400,
-                    color: isActive ? 'var(--color-black)' : 'var(--color-text-muted)',
-                    background: isActive ? 'var(--color-cream)' : 'transparent',
-                    /* Left-border indicator for active item */
-                    borderLeft: isActive ? '2px solid var(--color-black)' : '2px solid transparent',
-                    paddingLeft: isActive ? '9px' : '9px',
-                    transition: 'background-color 100ms ease-out, color 100ms ease-out'
-                  }}
-                  onMouseEnter={e => {
-                    if (!isActive) {
-                      e.currentTarget.style.background = 'var(--color-cream)';
-                      e.currentTarget.style.color = 'var(--color-black)';
-                    }
-                  }}
-                  onMouseLeave={e => {
-                    if (!isActive) {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.color = 'var(--color-text-muted)';
-                    }
-                  }}
-                >
-                  <span style={{ color: isActive ? 'var(--color-black)' : 'var(--color-text-faint)', display: 'flex', alignItems: 'center' }}>
-                    {item.icon}
-                  </span>
-                  {item.label}
-                </Link>
-              );
-            })}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  {group.items.map(item => {
+                    const isActive = pathname === item.path || (item.path !== '/' && pathname.startsWith(item.path) && item.path !== '/agents');
+                    return (
+                      <Link
+                        key={item.path + item.label}
+                        href={item.path}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          textDecoration: 'none',
+                          fontSize: '13px',
+                          fontWeight: isActive ? '700' : '500',
+                          color: isActive ? '#60A5FA' : '#A1A1AA',
+                          background: isActive ? 'rgba(59, 130, 246, 0.14)' : 'transparent',
+                          border: isActive ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent',
+                          transition: 'all 100ms ease-out'
+                        }}
+                        onMouseEnter={e => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = '#18181B';
+                            e.currentTarget.style.color = '#FFFFFF';
+                          }
+                        }}
+                        onMouseLeave={e => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.color = '#A1A1AA';
+                          }
+                        }}
+                      >
+                        <span style={{ color: isActive ? '#60A5FA' : '#71717A', display: 'flex', alignItems: 'center' }}>
+                          {item.icon}
+                        </span>
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
         </aside>
 
-        {/* ── Content area ── */}
-        <main style={{ flex: 1, padding: '32px', overflowY: 'auto', background: 'var(--color-white)' }}>
-          <div style={{ maxWidth: '1152px', margin: '0 auto' }}>
-            {children}
-          </div>
+        {/* ── Main Content Area ── */}
+        <main style={{ flex: 1, padding: '0', overflowY: 'auto', background: '#09090B' }}>
+          {children}
         </main>
       </div>
     </div>
