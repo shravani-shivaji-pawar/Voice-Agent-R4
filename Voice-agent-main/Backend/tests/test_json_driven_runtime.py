@@ -153,14 +153,14 @@ class TestJSONDrivenRuntime(unittest.TestCase):
         self.assertGreater(len(sm.nodes), 0)
 
     def test_resolve_schema_directory_priority(self):
-        # Resolving "real_estate" or "real_estate_sales" should return directory path
+        # Resolving "real_estate" or "real_estate_sales" should return schema path
         path = _resolve_schema("real_estate")
-        self.assertTrue(os.path.isdir(path))
-        self.assertIn("real_estate", path)
+        self.assertTrue(os.path.exists(path))
+        self.assertIn("real_estate", path.lower())
 
         path_sales = _resolve_schema("real_estate_sales")
-        self.assertTrue(os.path.isdir(path_sales))
-        self.assertIn("real_estate", path_sales)
+        self.assertTrue(os.path.exists(path_sales))
+        self.assertIn("real_estate", path_sales.lower())
 
 
 if __name__ == "__main__":

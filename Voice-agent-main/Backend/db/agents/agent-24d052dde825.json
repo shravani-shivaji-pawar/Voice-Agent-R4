@@ -16,18 +16,18 @@
                 "type": "conversation",
                 "instruction": {
                     "type": "prompt",
-                    "text": "Follow the published Flow V2 node 'Greeting' and keep the reply concise."
+                    "text": "Hello, this is Foodie. Am I speaking with {{name}}?"
                 },
                 "response": "Hello, this is Foodie. Am I speaking with {{name}}?",
                 "edges": [
                     {
-                        "id": "edge_start_1_discovery",
+                        "id": "edge_start_1_node_ask_name",
                         "condition": "Confirm",
                         "transition_condition": {
                             "type": "prompt",
                             "prompt": "Confirm"
                         },
-                        "destination_node_id": "discovery"
+                        "destination_node_id": "node_ask_name"
                     },
                     {
                         "id": "edge_start_2_end",
@@ -54,12 +54,36 @@
                 ]
             },
             {
+                "id": "node_ask_name",
+                "name": "ask name",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "what is your name ??"
+                },
+                "response": "what is your name ??",
+                "edges": [
+                    {
+                        "id": "edge_node_ask_name_1_discovery",
+                        "condition": "Continue",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Continue"
+                        },
+                        "destination_node_id": "discovery"
+                    }
+                ],
+                "intent_triggers": [
+                    "confirm"
+                ]
+            },
+            {
                 "id": "discovery",
                 "name": "Discovery",
                 "type": "conversation",
                 "instruction": {
                     "type": "prompt",
-                    "text": "Follow the published Flow V2 node 'Discovery' and keep the reply concise."
+                    "text": "Could you share a little about what you are looking for?"
                 },
                 "response": "Could you share a little about what you are looking for?",
                 "edges": [
@@ -93,6 +117,7 @@
                 ],
                 "intent_triggers": [
                     "confirm",
+                    "deny",
                     "provide_info"
                 ]
             },
@@ -102,7 +127,7 @@
                 "type": "fallback",
                 "instruction": {
                     "type": "prompt",
-                    "text": "Follow the published Flow V2 node 'Clarify' and keep the reply concise."
+                    "text": "Sorry, I did not catch that clearly. Could you repeat it once?"
                 },
                 "response": "Sorry, I did not catch that clearly. Could you repeat it once?",
                 "edges": [
@@ -136,11 +161,7 @@
                 ],
                 "intent_triggers": [
                     "unclear"
-                ],
-                "fallback": {
-                    "max_attempts": 2,
-                    "escalation_target": "end"
-                }
+                ]
             },
             {
                 "id": "confirm_followup",
@@ -148,7 +169,7 @@
                 "type": "conversation",
                 "instruction": {
                     "type": "prompt",
-                    "text": "Follow the published Flow V2 node 'Confirm Follow-up' and keep the reply concise."
+                    "text": "Thanks. I will have the team follow up with the right details."
                 },
                 "response": "Thanks. I will have the team follow up with the right details.",
                 "edges": [
@@ -191,7 +212,7 @@
                 "type": "end",
                 "instruction": {
                     "type": "prompt",
-                    "text": "Follow the published Flow V2 node 'End' and keep the reply concise."
+                    "text": "Thank you. Have a good day."
                 },
                 "response": "Thank you. Have a good day.",
                 "edges": [],
@@ -217,9 +238,9 @@
         "assigned_email": "",
         "client_id": null,
         "flow_v2_live": true,
-        "flow_v2_artifact_path": "db\\agents\\agent-24d052dde825.4e881ac5.live.flow.v2.json",
-        "flow_v2_published_at": "2026-09-26T11:38:45.601350",
+        "flow_v2_artifact_path": "db\\agents\\agent-24d052dde825.aa57603b.live.flow.v2.json",
+        "flow_v2_published_at": "2026-10-01T18:00:31.159441",
         "flow_v2_published_by": null,
-        "flow_v2_runtime_backup_path": "db\\agents\\agent-24d052dde825.runtime.backup.d0093e2d.json"
+        "flow_v2_runtime_backup_path": "db\\agents\\agent-24d052dde825.runtime.backup.218df03c.json"
     }
 }

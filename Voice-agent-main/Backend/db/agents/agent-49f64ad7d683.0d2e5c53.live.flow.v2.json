@@ -1,0 +1,202 @@
+{
+  "schema_version": "2.0",
+  "id": "flowv2_f0d4023c85ce",
+  "agent_id": "agent-49f64ad7d683",
+  "agent_name": "Mock Interview Coach",
+  "agent_type": "custom",
+  "status": "published",
+  "runtime_mode": "live",
+  "default_locale": "en",
+  "supported_locales": [
+    "en",
+    "hi",
+    "mr"
+  ],
+  "start_node_id": "start",
+  "global_prompt": "You are Mock Interview Coach, an expert technical interview coach. You help candidates practice technical interviews, answer questions, provide instant feedback, and boost candidate confidence for AI/ML and IT engineering roles.",
+  "slots": [],
+  "intents": [
+    {
+      "id": "confirm",
+      "examples": [
+        "yes",
+        "okay",
+        "sure"
+      ]
+    },
+    {
+      "id": "deny",
+      "examples": [
+        "no",
+        "not interested"
+      ]
+    },
+    {
+      "id": "unclear",
+      "examples": [
+        "hmm",
+        "repeat"
+      ]
+    },
+    {
+      "id": "provide_info",
+      "examples": [
+        "my budget is 50 lakh"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "message",
+      "label": "Greeting",
+      "response": {
+        "en": "Hello, this is Mock Interview Coach. Am I speaking with {{name}}?"
+      },
+      "transitions": [
+        {
+          "intent": "confirm",
+          "label": "Confirm",
+          "target": "discovery"
+        },
+        {
+          "intent": "deny",
+          "label": "Deny",
+          "target": "end"
+        },
+        {
+          "intent": "unclear",
+          "label": "Unclear",
+          "target": "node_1790770606917_6yot"
+        }
+      ],
+      "collects": []
+    },
+    {
+      "id": "discovery",
+      "type": "slot_collection",
+      "label": "Discovery",
+      "collects": [],
+      "response": {
+        "en": "Could you share a little about what you are looking for?"
+      },
+      "transitions": [
+        {
+          "intent": "provide_info",
+          "label": "Provide Info",
+          "target": "confirm_followup"
+        },
+        {
+          "intent": "confirm",
+          "label": "Confirm",
+          "target": "confirm_followup"
+        },
+        {
+          "intent": "unclear",
+          "label": "Unclear",
+          "target": "fallback"
+        }
+      ]
+    },
+    {
+      "id": "fallback",
+      "type": "fallback",
+      "label": "Clarify",
+      "response": {
+        "en": "Sorry, I did not catch that clearly. Could you repeat it once?"
+      },
+      "fallback": {
+        "max_attempts": 2,
+        "escalation_target": "end"
+      },
+      "transitions": [
+        {
+          "intent": "provide_info",
+          "label": "Provide Info",
+          "target": "discovery"
+        },
+        {
+          "intent": "confirm",
+          "label": "Confirm",
+          "target": "discovery"
+        },
+        {
+          "intent": "deny",
+          "label": "Deny",
+          "target": "end"
+        }
+      ],
+      "collects": []
+    },
+    {
+      "id": "confirm_followup",
+      "type": "message",
+      "label": "Confirm Follow-up",
+      "response": {
+        "en": "Thanks. I will have the team follow up with the right details."
+      },
+      "transitions": [
+        {
+          "intent": "confirm",
+          "label": "Confirm",
+          "target": "end"
+        },
+        {
+          "intent": "deny",
+          "label": "Deny",
+          "target": "end"
+        },
+        {
+          "intent": "unclear",
+          "label": "Unclear",
+          "target": "fallback"
+        }
+      ],
+      "collects": []
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "label": "End",
+      "response": {
+        "en": "Thank you. Have a good day."
+      },
+      "transitions": [],
+      "collects": []
+    },
+    {
+      "id": "node_1790770606917_6yot",
+      "type": "message",
+      "label": "city",
+      "response": {
+        "en": "which city"
+      },
+      "collects": [],
+      "transitions": [
+        {
+          "intent": "confirm",
+          "label": "Confirm",
+          "target": "fallback"
+        },
+        {
+          "intent": "provide_info",
+          "label": "Provide Info",
+          "target": "fallback"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "source": "agent_metadata",
+    "source_language": "en",
+    "validation_required": true,
+    "live_runtime_unchanged": false,
+    "published_at": "2026-09-30T18:14:09.914717",
+    "published_to": "v1_runtime_schema"
+  },
+  "validation": {
+    "status": "valid",
+    "node_count": 6,
+    "terminal_count": 1
+  }
+}

@@ -991,13 +991,14 @@ def _flow_v2_to_runtime_conversation_flow(flow: dict) -> dict:
         node_type = node.get("type")
         response_text = _flow_v2_response_text(node, default_locale)
         runtime_type = "end" if node_type == "end" else "fallback" if node_type == "fallback" else "conversation"
+        instruction_text = response_text if (response_text and response_text != "Continue.") else f"Follow the published Flow V2 node '{node.get('label') or node_id}' and keep the reply concise."
         runtime_node = {
             "id": node_id,
             "name": node.get("label") or node_id,
             "type": runtime_type,
             "instruction": {
                 "type": "prompt",
-                "text": f"Follow the published Flow V2 node '{node.get('label') or node_id}' and keep the reply concise.",
+                "text": instruction_text,
             },
             "response": response_text,
             "edges": [
@@ -5919,32 +5920,95 @@ async def update_agent_flow_endpoint(agent_id: str, request: Request):
     
     flow, _ = await _load_agent_flow_v2_spec(agent)
     if isinstance(body, dict) and "nodes" in body and isinstance(body["nodes"], list):
-        # Update editable node values
-        node_map = {n["id"]: n for n in flow.get("nodes", [])}
-        for edited in body["nodes"]:
-            nid = edited.get("id")
-            if nid in node_map:
-                if "label" in edited:
-                    node_map[nid]["label"] = edited["label"]
-                if "response_en" in edited:
-                    res = node_map[nid].get("response") or {}
-                    if isinstance(res, dict):
-                        res["en"] = edited["response_en"]
-                        node_map[nid]["response"] = res
-                if "collects" in edited and isinstance(edited["collects"], list):
-                    node_map[nid]["collects"] = edited["collects"]
-                if "transitions" in edited and isinstance(edited["transitions"], list):
-                    node_map[nid]["transitions"] = edited["transitions"]
+        submitted_nodes = body["nodes"]
+        submitted_ids = {str(n.get("id")).strip() for n in submitted_nodes if isinstance(n, dict) and n.get("id")}
+        
+        # Check 1: Protect start node from deletion
+        start_id = str(flow.get("start_node_id") or "start").strip()
+        if start_id not in submitted_ids:
+            raise HTTPException(status_code=400, detail=f"Cannot delete mandatory start node '{start_id}'")
+        
+        # Check 2: Protect end node requirement
+        has_end_node = any(str(n.get("type")).strip() == "end" for n in submitted_nodes if isinstance(n, dict))
+        if not has_end_node:
+            raise HTTPException(status_code=400, detail="Flow requires at least one node of type 'end'")
+        
+        # Existing slots registry
+        slots_registry = {str(s.get("id")).strip(): s for s in flow.get("slots") or [] if isinstance(s, dict) and s.get("id")}
+
+        # Rebuild nodes list from submitted_nodes to support full Add, Edit, and Delete semantics
+        updated_nodes = []
+        old_nodes_map = {str(n.get("id")).strip(): n for n in flow.get("nodes", []) if isinstance(n, dict) and n.get("id")}
+        
+        for edited in submitted_nodes:
+            if not isinstance(edited, dict):
+                continue
+            nid = str(edited.get("id") or "").strip()
+            if not nid:
+                continue
+            
+            existing = old_nodes_map.get(nid, {})
+            ntype = str(edited.get("type") or existing.get("type") or "message").strip()
+            nlabel = str(edited.get("label") or existing.get("label") or nid).strip()
+            
+            # Handle response localization
+            if "response_en" in edited:
+                resp_text = str(edited.get("response_en") or "").strip()
+                res = dict(existing.get("response") or {}) if isinstance(existing.get("response"), dict) else {}
+                res["en"] = resp_text
+            elif "response" in edited and isinstance(edited["response"], dict):
+                res = edited["response"]
             else:
-                # Add new custom node
-                flow.setdefault("nodes", []).append({
-                    "id": nid,
-                    "type": edited.get("type", "message"),
-                    "label": edited.get("label", nid),
-                    "response": {"en": edited.get("response_en", "How can I help?")},
-                    "collects": edited.get("collects", []),
-                    "transitions": edited.get("transitions", []),
-                })
+                res = dict(existing.get("response") or {}) if isinstance(existing.get("response"), dict) else {"en": "Continue."}
+            
+            if not res or not any(str(v).strip() for v in res.values()):
+                res = {"en": "Continue."}
+            
+            collects = edited.get("collects") if "collects" in edited else existing.get("collects", [])
+            if not isinstance(collects, list):
+                collects = []
+            
+            # Auto-register any new slot in collects into flow["slots"]
+            clean_collects = []
+            for slot_name in collects:
+                slot_str = str(slot_name).strip()
+                if slot_str:
+                    clean_collects.append(slot_str)
+                    if slot_str not in slots_registry:
+                        slot_obj = {"id": slot_str, "required": True, "source": "conversation"}
+                        slots_registry[slot_str] = slot_obj
+
+            transitions = edited.get("transitions") if "transitions" in edited else existing.get("transitions", [])
+            if not isinstance(transitions, list):
+                transitions = []
+            
+            # Filter out transitions whose target node has been deleted
+            valid_transitions = []
+            for t in transitions:
+                if isinstance(t, dict):
+                    target = str(t.get("target") or "").strip()
+                    intent = str(t.get("intent") or "").strip()
+                    if target and target in submitted_ids and intent:
+                        t_clean = dict(t)
+                        t_clean["target"] = target
+                        t_clean["intent"] = intent
+                        t_clean["label"] = str(t.get("label") or intent.replace("_", " ").title()).strip()
+                        valid_transitions.append(t_clean)
+            
+            updated_nodes.append({
+                "id": nid,
+                "type": ntype,
+                "label": nlabel,
+                "response": res,
+                "collects": clean_collects,
+                "transitions": valid_transitions,
+            })
+            
+        flow["nodes"] = updated_nodes
+        flow["slots"] = list(slots_registry.values())
+        
+        if "start_node_id" in body and str(body["start_node_id"]).strip() in submitted_ids:
+            flow["start_node_id"] = str(body["start_node_id"]).strip()
 
     try:
         validated = validate_flow_spec(flow)
@@ -5952,7 +6016,9 @@ async def update_agent_flow_endpoint(agent_id: str, request: Request):
         raise HTTPException(status_code=400, detail=f"Flow validation failed: {exc}") from exc
 
     actor = _actor_email(request)
-    artifact_path = _write_flow_v2_live_artifact(agent, validated)
+    publish_result = _publish_flow_v2_to_runtime(agent, validated, actor=actor)
+    artifact_path = publish_result.get("artifact_path") or _write_flow_v2_live_artifact(agent, validated)
+    
     flow_version = await db.create_agent_flow_version(
         agent["id"],
         client_id=agent.get("client_id"),
@@ -5962,7 +6028,21 @@ async def update_agent_flow_endpoint(agent_id: str, request: Request):
         artifact_path=artifact_path,
         validation=validated.get("validation", {}),
     )
+    
+    # Sync runtime schema file for StateManager if present
+    schema_path = _agent_schema_path(agent["id"], agent.get("schema_path"))
+    if schema_path and os.path.exists(schema_path):
+        try:
+            with open(schema_path, "r", encoding="utf-8") as f:
+                schema_content = json.load(f)
+            schema_content["conversationFlow"] = _flow_v2_to_runtime_conversation_flow(validated)
+            with open(schema_path, "w", encoding="utf-8") as f:
+                json.dump(schema_content, f, indent=4)
+        except Exception as e:
+            logger.warning("Could not sync runtime schema for agent %s: %s", agent_id, e)
+
     return await _load_agent_flow_preview(agent)
+
 
 
 @app.post("/api/memory/agents/{agent_id}/collections", dependencies=[Depends(require_auth)])
@@ -7996,9 +8076,34 @@ def _resolve_schema(agent_id: str) -> str:
     """
     Resolve the agent schema path from agent_id.
     Always reads from disk — never cached — so fine-tuning changes apply immediately.
+    Prioritizes published agent JSON files in AGENTS_DIR.
     """
     clean_id = (agent_id or "").strip().lower()
 
+    # 1. Prioritize published/saved agent file in AGENTS_DIR
+    if agent_id:
+        agent_file = os.path.join(AGENTS_DIR, f"{agent_id}.json")
+        if os.path.exists(agent_file):
+            return agent_file
+
+    if clean_id:
+        clean_file = os.path.join(AGENTS_DIR, f"{clean_id}.json")
+        if os.path.exists(clean_file):
+            return clean_file
+
+    # 2. Check alias directories in AGENTS_DIR
+    aliases = [agent_id, clean_id] if agent_id else [clean_id]
+    if clean_id == "real_estate_sales":
+        aliases.append("real_estate")
+
+    for alias in aliases:
+        if not alias:
+            continue
+        dir_path = os.path.join(AGENTS_DIR, alias)
+        if os.path.isdir(dir_path):
+            return dir_path
+
+    # 3. Fallback to default static templates if no published file exists in AGENTS_DIR
     if clean_id in ("education_counselling", "education", "aarohi"):
         edu_file = os.path.join(os.path.dirname(__file__), "Education_Counselling_Agent.json")
         if os.path.exists(edu_file):
@@ -8007,35 +8112,11 @@ def _resolve_schema(agent_id: str) -> str:
         if os.path.exists(edu_db_file):
             return edu_db_file
 
-    if clean_id in ("real-estate-demo", "real_estate_sales", "real_estate", "priya"):
+    if clean_id in ("real-estate-demo", "real_estate_sales", "real_estate", "priya", "default"):
         re_file = os.path.join(os.path.dirname(__file__), "Updated_Real_Estate_Agent.json")
         if os.path.exists(re_file):
             return re_file
 
-    aliases = [agent_id]
-    fallback_file = os.path.join(AGENTS_DIR, f"{agent_id}.json")
-    if os.path.exists(fallback_file):
-        try:
-            with open(fallback_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                friendly_name = data.get("agent_name")
-                if friendly_name:
-                    friendly_name_clean = str(friendly_name).strip().lower().replace(" ", "_")
-                    aliases.append(friendly_name_clean)
-                    aliases.append(str(friendly_name).strip().lower())
-        except Exception:
-            pass
-
-    if agent_id == "real_estate_sales":
-        aliases.append("real_estate")
-
-    for alias in aliases:
-        dir_path = os.path.join(AGENTS_DIR, alias)
-        if os.path.isdir(dir_path):
-            return dir_path
-
-    if os.path.exists(fallback_file):
-        return fallback_file
     return None
 
 

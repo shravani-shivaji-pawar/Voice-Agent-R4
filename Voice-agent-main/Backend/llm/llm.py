@@ -364,16 +364,22 @@ Respond ONLY with a valid JSON object matching this schema:
         
 def _parse_combined_response_payload(raw: Any, domain: str) -> Optional[CombinedResponseAnalysis]:
     """Parse dict or raw string/exception into CombinedResponseAnalysis cleanly."""
+    if not raw:
+        return None
+
     data = None
     if isinstance(raw, dict):
         data = raw
     elif isinstance(raw, str):
         cleaned_raw = raw.strip()
+        if not cleaned_raw:
+            return None
+
         # Strip markdown block wrappers if present
         if cleaned_raw.startswith("```"):
             cleaned_raw = re.sub(r"^```(?:json)?\s*", "", cleaned_raw, flags=re.IGNORECASE)
-            cleaned_raw = re.sub(r"\s*```$", "", cleaned_raw)
-        
+            cleaned_raw = re.sub(r"\s*```$", "", cleaned_raw).strip()
+
         try:
             data = json.loads(cleaned_raw)
         except Exception:
@@ -405,13 +411,21 @@ def _parse_combined_response_payload(raw: Any, domain: str) -> Optional[Combined
                 pass
 
         if isinstance(data, dict):
-            spoken_text = data.get("spoken_reply_text") or data.get("response") or data.get("reply")
-            if spoken_text and isinstance(spoken_text, str):
+            spoken_text = data.get("spoken_reply_text") or data.get("response") or data.get("reply") or data.get("text") or data.get("spoken_text") or data.get("message")
+            
+            # If spoken_text is empty or not a string, check if raw was plain text or if we can extract spoken_text from dict keys
+            if not spoken_text or not isinstance(spoken_text, str) or not spoken_text.strip():
+                candidates = [v for k, v in data.items() if isinstance(v, str) and len(v.strip()) > 3 and k not in ("intent", "confidence_score")]
+                if candidates:
+                    spoken_text = candidates[0]
+
+            if spoken_text and isinstance(spoken_text, str) and spoken_text.strip():
                 spoken_text = _sanitize_llm_text(spoken_text)
                 spoken_text = _check_and_fix_domain_leakage(spoken_text, domain=domain, language="en")
                 intent_data = data.get("intent_analysis")
                 if not isinstance(intent_data, dict):
-                    intent_data = {"intent": data.get("intent", "DISCOVERY"), "confidence_score": 1.0, "entities": {}}
+                    intent_str = str(data.get("intent") or "DISCOVERY").strip()
+                    intent_data = {"intent": intent_str, "confidence_score": 1.0, "entities": {}}
                 
                 # Ensure entities dictionary has safe ExtractedEntities parsing
                 entities_raw = intent_data.get("entities")
@@ -425,18 +439,18 @@ def _parse_combined_response_payload(raw: Any, domain: str) -> Optional[Combined
 
                 return CombinedResponseAnalysis(
                     intent_analysis=IntentAnalysis(
-                        intent=intent_data.get("intent", "DISCOVERY"),
-                        confidence_score=float(intent_data.get("confidence_score", 1.0)),
+                        intent=str(intent_data.get("intent") or "DISCOVERY").strip(),
+                        confidence_score=float(intent_data.get("confidence_score") or 1.0),
                         entities=parsed_entities
                     ),
-                    spoken_reply_text=spoken_text
+                    spoken_reply_text=spoken_text.strip()
                 )
 
     # Fallback 3: If raw string is plain non-JSON text, use it as spoken reply text
     if isinstance(raw, str) and raw.strip():
         cleaned_text = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.IGNORECASE)
         cleaned_text = re.sub(r"\s*```$", "", cleaned_text).strip()
-        if cleaned_text and not cleaned_text.startswith("{") and not ("Error code:" in cleaned_text or "400" in cleaned_text):
+        if cleaned_text and not cleaned_text.startswith("{") and not ("Error code:" in cleaned_text or "400" in cleaned_text or "validation errors" in cleaned_text):
             cleaned_text = _sanitize_llm_text(cleaned_text)
             cleaned_text = _check_and_fix_domain_leakage(cleaned_text, domain=domain, language="en")
             return CombinedResponseAnalysis(
@@ -445,6 +459,27 @@ def _parse_combined_response_payload(raw: Any, domain: str) -> Optional[Combined
             )
 
     return None
+
+
+def _build_safe_fallback_combined_response(domain: str = "real_estate", user_input: str = "") -> CombinedResponseAnalysis:
+    """Centralized fallback generator that ALWAYS returns a valid CombinedResponseAnalysis."""
+    clean_d = (domain or "").strip().lower()
+    if clean_d in ("education", "education_counselling", "aarohi"):
+        fallback_text = "I'm here to help with your course and career questions. What would you like to explore?"
+    elif clean_d in ("real_estate", "real_estate_sales", "priya"):
+        fallback_text = "I'd be happy to help with that. Could you tell me a bit more about what options you are looking for?"
+    else:
+        fallback_text = "Sorry, I did not catch that clearly. Could you please repeat?"
+
+    return CombinedResponseAnalysis(
+        intent_analysis=IntentAnalysis(
+            intent="DISCOVERY",
+            confidence_score=0.0,
+            entities=ExtractedEntities()
+        ),
+        spoken_reply_text=fallback_text
+    )
+
 
 async def generate_combined_intent_and_response(
     user_input: str,
@@ -456,6 +491,7 @@ async def generate_combined_intent_and_response(
     """
     Fast path: queries Groq using llama-3.3-70b-versatile / gpt-oss-20b to extract slots AND generate response.
     Supports dynamic system_prompt override for custom configuration-driven agents.
+    Guarantees a valid CombinedResponseAnalysis return value with zero Pydantic validation errors.
     """
     if system_prompt:
         prompt_template = f"""You are an AI voice assistant on a live phone call.
@@ -521,53 +557,41 @@ Respond ONLY with a valid JSON object matching this schema:
             max_tokens=150
         )
         
-        raw_json = response.choices[0].message.content or "{}"
+        raw_json = response.choices[0].message.content or ""
         parsed = _parse_combined_response_payload(raw_json, domain=domain)
         if parsed:
             return parsed
-        data = json.loads(raw_json)
-        if "spoken_reply_text" in data and data["spoken_reply_text"]:
-            data["spoken_reply_text"] = _sanitize_llm_text(data["spoken_reply_text"])
-            data["spoken_reply_text"] = _check_and_fix_domain_leakage(data["spoken_reply_text"], domain=domain, language="en")
-        return CombinedResponseAnalysis(**data)
+        
+        logger.warning(f"[LLM COMBINED] Primary model '{target_model}' output empty or invalid JSON: '{raw_json[:100]}'. Attempting fallback model...")
     except Exception as e:
-        logger.warning(f"Primary model {target_model} call hit exception: {e}. Attempting payload extraction or retry...")
+        logger.warning(f"[LLM COMBINED] Primary model '{target_model}' call hit exception: {e}. Attempting payload extraction or retry...")
         parsed_err = _parse_combined_response_payload(str(e), domain=domain)
         if parsed_err:
-            logger.info("Successfully extracted valid response payload from model exception body.")
+            logger.info("[LLM COMBINED] Successfully extracted valid response payload from model exception body.")
             return parsed_err
 
-        try:
-            is_groq = isinstance(_client, AsyncGroq)
-            fallback_model = "qwen/qwen3.8-27b" if (is_groq and target_model != "qwen/qwen3.8-27b") else "openai/gpt-oss-20b"
-            retry_resp = await _client.chat.completions.create(
-                model=fallback_model,
-                messages=messages,
-                temperature=0.4,
-                max_tokens=250
-            )
-            raw_json = retry_resp.choices[0].message.content or "{}"
-            parsed_retry = _parse_combined_response_payload(raw_json, domain=domain)
-            if parsed_retry:
-                return parsed_retry
-            data = json.loads(raw_json)
-            if "spoken_reply_text" in data and data["spoken_reply_text"]:
-                data["spoken_reply_text"] = _sanitize_llm_text(data["spoken_reply_text"])
-                data["spoken_reply_text"] = _check_and_fix_domain_leakage(data["spoken_reply_text"], domain=domain, language="en")
-            return CombinedResponseAnalysis(**data)
-        except Exception as retry_err:
-            logger.error(f"Fallback model retry also failed: {retry_err}")
-            clean_d = (domain or "").strip().lower()
-            if clean_d in ("education", "education_counselling", "aarohi"):
-                fallback_text = "I'm here to help with your course and career questions. What would you like to explore?"
-            elif clean_d in ("real_estate", "real_estate_sales", "priya"):
-                fallback_text = "I'd be happy to help with that. Could you tell me a bit more about what options you are looking for?"
-            else:
-                fallback_text = "I'm sorry, I missed that. Could you please repeat your question?"
-            return CombinedResponseAnalysis(
-                intent_analysis=IntentAnalysis(intent="DISCOVERY", confidence_score=0.0, entities=ExtractedEntities()),
-                spoken_reply_text=fallback_text
-            )
+    # Fallback retry model
+    try:
+        is_groq = isinstance(_client, AsyncGroq)
+        fallback_model = "qwen/qwen3.8-27b" if (is_groq and target_model != "qwen/qwen3.8-27b") else "openai/gpt-oss-20b"
+        retry_resp = await _client.chat.completions.create(
+            model=fallback_model,
+            messages=messages,
+            temperature=0.4,
+            max_tokens=250
+        )
+        raw_json = retry_resp.choices[0].message.content or ""
+        parsed_retry = _parse_combined_response_payload(raw_json, domain=domain)
+        if parsed_retry:
+            logger.info(f"[LLM COMBINED] Fallback model '{fallback_model}' successfully produced valid response.")
+            return parsed_retry
+        logger.warning(f"[LLM COMBINED] Fallback model '{fallback_model}' returned unparseable content: '{raw_json[:100]}'")
+    except Exception as retry_err:
+        logger.error(f"[LLM COMBINED] Fallback model retry also hit exception: {retry_err}")
+
+    # Centralized Fallback: Always returns a valid CombinedResponseAnalysis with non-empty spoken_reply_text
+    logger.info(f"[LLM COMBINED] Activating safe fallback response for domain='{domain}' user_input='{user_input[:40]}'")
+    return _build_safe_fallback_combined_response(domain=domain, user_input=user_input)
 
 _NEHA_PERSONA = (
     "Role & Core Identity:\n"
