@@ -349,30 +349,40 @@ def _resolve_language_code(preferred_language: str | None) -> str:
     return LANGUAGE_MAP.get(lang, "en")
 
 
-def _resolve_speaker(speaker: str | None, model: str = DEFAULT_MODEL, language: str = "en") -> str:
+def _resolve_speaker(speaker: str | None, model: str = DEFAULT_MODEL, language: str = "en") -> tuple[str, str]:
     """
     Resolve requested speaker/voice to a valid, model-compatible Smallest AI voice_id.
-    Ensures model/voice pairing is 100% correct.
+    Ensures model/voice pairing is 100% correct and automatically adapts model if needed.
     """
+    norm_model = (model or DEFAULT_MODEL).strip().lower()
+    if norm_model not in ["lightning_v3.1", "lightning_v3.1_pro"]:
+        norm_model = DEFAULT_MODEL
+
     if speaker:
         key = speaker.strip().lower()
-        # Direct match check in catalog
         catalog = fetch_voice_catalog()
         for v in catalog:
             if v["voice_id"].lower() == key:
-                # If model compatible, return direct
-                if model.lower() in [m.lower() for m in v.get("models", [])]:
-                    return v["voice_id"]
+                supported_models = [m.lower() for m in v.get("models", [])]
+                effective_model = norm_model if norm_model in supported_models else (supported_models[0] if supported_models else DEFAULT_MODEL)
+                logger.info(
+                    "[SmallestTTS] Voice matched: requested='%s' -> resolved_voice='%s' (model=%s, lang=%s)",
+                    speaker,
+                    v["voice_id"],
+                    effective_model,
+                    language,
+                )
+                return v["voice_id"], effective_model
 
-    # Fallback: pick the first compatible voice for model & language
-    compatible = get_voices_for_model_and_language(model=model, language=language)
-    if compatible:
-        return compatible[0]["voice_id"]
-
-    # Final hard defaults per model
-    if model == "lightning_v3.1_pro":
-        return "meher"
-    return "anika"
+    compatible = get_voices_for_model_and_language(model=norm_model, language=language)
+    fallback_voice = compatible[0]["voice_id"] if compatible else ("meher" if norm_model == "lightning_v3.1_pro" else "anika")
+    logger.warning(
+        "[SmallestTTS] Voice fallback triggered: requested='%s' not found; using fallback_voice='%s', model='%s'",
+        speaker,
+        fallback_voice,
+        norm_model,
+    )
+    return fallback_voice, norm_model
 
 
 def clean_text_for_tts(text: str) -> str:
@@ -440,12 +450,9 @@ def generate_speech_stream(
         logger.error("[SmallestTTS] SMALLEST_API_KEY environment variable is missing or empty.")
         return
 
-    selected_model = (model or os.getenv("SMALLEST_MODEL") or DEFAULT_MODEL).strip().lower()
-    if selected_model not in ["lightning_v3.1", "lightning_v3.1_pro"]:
-        selected_model = DEFAULT_MODEL
-
+    requested_model = (model or os.getenv("SMALLEST_MODEL") or DEFAULT_MODEL).strip().lower()
     lang_code = _resolve_language_code(preferred_language)
-    voice_id = _resolve_speaker(speaker, model=selected_model, language=lang_code)
+    voice_id, selected_model = _resolve_speaker(speaker, model=requested_model, language=lang_code)
 
     payload = {
         "text": cleaned_text,

@@ -533,6 +533,10 @@ def _init_schema() -> None:
         except sqlite3.OperationalError:
             pass
         try:
+            conn.execute("ALTER TABLE agents ADD COLUMN smallest_model TEXT DEFAULT 'lightning_v3.1'")
+        except sqlite3.OperationalError:
+            pass
+        try:
             conn.execute("ALTER TABLE agents ADD COLUMN assigned_email TEXT")
         except sqlite3.OperationalError:
             pass
@@ -1409,15 +1413,26 @@ class DatabaseManager:
                     if not cur.fetchone():
                         client_id_val = None
 
+                voice_val = (
+                    data.get("voice")
+                    or data.get("smallest_voice")
+                    or data.get("voice_id")
+                    or (data.get("tts") if isinstance(data.get("tts"), dict) else {}).get("voice")
+                )
+                model_val = (
+                    data.get("smallest_model")
+                    or (data.get("tts") if isinstance(data.get("tts"), dict) else {}).get("model")
+                    or "lightning_v3.1"
+                )
                 conn.execute(
-                    """INSERT INTO agents (id, name, voice, language, max_duration, provider, stt_provider, tts_provider, cartesia_voice_id, parler_description, assigned_email, agent_type, script, greeting_response, data_fields, schema_path, client_id, certification_status, qa_score, last_qa_report, created_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    """INSERT INTO agents (id, name, voice, language, max_duration, provider, stt_provider, tts_provider, cartesia_voice_id, parler_description, smallest_model, assigned_email, agent_type, script, greeting_response, data_fields, schema_path, client_id, certification_status, qa_score, last_qa_report, created_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
-                        agent_id, name_val, data.get("voice") or data.get("smallest_voice"),
+                        agent_id, name_val, voice_val,
                         data.get("language", "en"), data.get("max_duration", 300),
                         data.get("provider"), data.get("stt_provider", "smallest"),
                         data.get("tts_provider", "smallest"), data.get("cartesia_voice_id"),
-                        data.get("parler_description"), data.get("assigned_email"),
+                        data.get("parler_description"), model_val, data.get("assigned_email"),
                         data.get("agent_type") or "custom", script_val,
                         data.get("greeting_response") or data.get("greeting"),
                         json.dumps(data.get("data_fields", [])),
@@ -1429,7 +1444,14 @@ class DatabaseManager:
                 )
                 conn.commit()
                 _CACHE_GET_AGENT.pop(agent_id, None)
-                return {**data, "id": agent_id, "name": name_val}
+                try:
+                    from tts.provider import clear_agent_config_cache
+                    clear_agent_config_cache(agent_id)
+                except Exception:
+                    pass
+                res_data = {**data, "id": agent_id, "name": name_val, "voice": voice_val, "smallest_voice": voice_val, "voice_id": voice_val, "smallest_model": model_val}
+                res_data["tts"] = {"provider": res_data.get("tts_provider", "smallest"), "model": model_val, "voice": voice_val}
+                return res_data
             finally:
                 conn.close()
         return await run_in_executor(_sync)
@@ -1461,6 +1483,16 @@ class DatabaseManager:
                     return None
                 data = dict(row)
                 data["data_fields"] = json.loads(data.get("data_fields") or "[]")
+                v_val = data.get("voice") or "anika"
+                m_val = data.get("smallest_model") or "lightning_v3.1"
+                data["smallest_voice"] = v_val
+                data["voice_id"] = v_val
+                data["smallest_model"] = m_val
+                data["tts"] = {
+                    "provider": data.get("tts_provider") or "smallest",
+                    "model": m_val,
+                    "voice": v_val
+                }
                 _CACHE_GET_AGENT[agent_id] = (time.time(), data)
                 return data
             finally:
@@ -1475,24 +1507,36 @@ class DatabaseManager:
                 if not existing:
                     return None
 
+                voice_val = (
+                    data.get("voice")
+                    or data.get("smallest_voice")
+                    or data.get("voice_id")
+                    or (data.get("tts") if isinstance(data.get("tts"), dict) else {}).get("voice")
+                )
+                model_val = (
+                    data.get("smallest_model")
+                    or (data.get("tts") if isinstance(data.get("tts"), dict) else {}).get("model")
+                    or "lightning_v3.1"
+                )
                 conn.execute(
                     """UPDATE agents
                        SET name=?, voice=?, language=?, max_duration=?, provider=?,
                            stt_provider=?, tts_provider=?, cartesia_voice_id=?,
-                           parler_description=?, assigned_email=?, agent_type=?, script=?,
+                           parler_description=?, smallest_model=?, assigned_email=?, agent_type=?, script=?,
                            greeting_response=?, data_fields=?, schema_path=?, client_id=?,
                            certification_status=?, qa_score=?, last_qa_report=?
                        WHERE id=?""",
                     (
                         data.get("name"),
-                        data.get("voice"),
+                        voice_val,
                         data.get("language", "en"),
                         data.get("max_duration", 300),
                         data.get("provider"),
-                        data.get("stt_provider", "groq"),
-                        data.get("tts_provider", "edge"),
+                        data.get("stt_provider", "smallest"),
+                        data.get("tts_provider", "smallest"),
                         data.get("cartesia_voice_id"),
                         data.get("parler_description"),
+                        model_val,
                         data.get("assigned_email"),
                         data.get("agent_type") or "custom",
                         data.get("script") if ("script" in data and data.get("script") is not None) else data.get("system_prompt"),
@@ -1507,10 +1551,26 @@ class DatabaseManager:
                     ),
                 )
                 conn.commit()
+                _CACHE_GET_AGENT.pop(agent_id, None)
+                try:
+                    from tts.provider import clear_agent_config_cache
+                    clear_agent_config_cache(agent_id)
+                except Exception:
+                    pass
 
                 row = conn.execute("SELECT * FROM agents WHERE id=?", (agent_id,)).fetchone()
                 updated = dict(row)
                 updated["data_fields"] = json.loads(updated.get("data_fields") or "[]")
+                v_val = updated.get("voice") or "anika"
+                m_val = updated.get("smallest_model") or "lightning_v3.1"
+                updated["smallest_voice"] = v_val
+                updated["voice_id"] = v_val
+                updated["smallest_model"] = m_val
+                updated["tts"] = {
+                    "provider": updated.get("tts_provider") or "smallest",
+                    "model": m_val,
+                    "voice": v_val
+                }
                 return updated
             finally:
                 conn.close()

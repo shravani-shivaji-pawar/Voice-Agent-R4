@@ -31,7 +31,7 @@ class TTSProviderTest(unittest.TestCase):
     def test_default_provider_is_edge(self):
         os.environ.pop("TTS_PROVIDER", None)
         os.environ.pop("CARTESIA_AGENT_IDS", None)
-        self.assertEqual(provider._configured_provider(), "edge")
+        self.assertEqual(provider._configured_provider(), provider.DEFAULT_PROVIDER)
 
     def test_agent_allowlist_can_select_cartesia(self):
         os.environ["TTS_PROVIDER"] = "edge"

@@ -24,6 +24,15 @@ _AGENT_CONFIG_CACHE: dict[str, tuple[float, dict]] = {}
 _AGENT_SCHEMA_DIR = Path(__file__).resolve().parent.parent / "db" / "agents"
 
 
+def clear_agent_config_cache(agent_id: str | None = None) -> None:
+    """Clear cached agent provider configurations."""
+    if agent_id:
+        _AGENT_CONFIG_CACHE.pop(agent_id, None)
+    else:
+        _AGENT_CONFIG_CACHE.clear()
+
+
+
 def _env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -61,8 +70,17 @@ def _configured_provider(agent_id: str = "default") -> str:
     return global_provider
 
 
+ALIAS_MAP = {
+    "education": ["education", "education_counselling"],
+    "education_counselling": ["education_counselling", "education"],
+    "real_estate": ["real_estate", "real_estate_sales", "default"],
+    "real_estate_sales": ["real_estate_sales", "real_estate", "default"],
+    "default": ["default", "real_estate_sales", "real_estate"]
+}
+
+
 def _provider_config_from_agent_schema(agent_id: str) -> dict:
-    if not agent_id or agent_id == "default":
+    if not agent_id:
         return {}
 
     # Check cache (expire after 10s)
@@ -71,6 +89,7 @@ def _provider_config_from_agent_schema(agent_id: str) -> dict:
         return cached[1]
 
     config = {}
+    candidates = ALIAS_MAP.get(agent_id, [agent_id])
 
     # 1. Fast direct SQLite lookup (0.1ms, no network deadlocks)
     try:
@@ -81,92 +100,122 @@ def _provider_config_from_agent_schema(agent_id: str) -> dict:
             conn = sqlite3.connect(str(db_path))
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT tts_provider, voice, cartesia_voice_id, name, agent_type FROM agents WHERE id = ?", (agent_id,))
-            row = cursor.fetchone()
+            for cid in candidates:
+                try:
+                    cursor.execute("SELECT tts_provider, voice, cartesia_voice_id, name, agent_type, smallest_model FROM agents WHERE id = ?", (cid,))
+                except Exception:
+                    cursor.execute("SELECT tts_provider, voice, cartesia_voice_id, name, agent_type FROM agents WHERE id = ?", (cid,))
+                row = cursor.fetchone()
+                if row:
+                    row_dict = dict(row)
+                    if row_dict.get("tts_provider"):
+                        config["tts_provider"] = _normalize_provider(row_dict["tts_provider"])
+                    voice = row_dict.get("voice") or row_dict.get("smallest_voice") or row_dict.get("voice_id")
+                    if voice:
+                        config["voice"] = str(voice).strip()
+                    if row_dict.get("cartesia_voice_id"):
+                        config["cartesia_voice_id"] = str(row_dict["cartesia_voice_id"]).strip()
+                    if row_dict.get("smallest_model"):
+                        config["smallest_model"] = str(row_dict["smallest_model"]).strip()
+                    if row_dict.get("name"):
+                        config["name"] = str(row_dict["name"]).strip()
+                    if row_dict.get("agent_type"):
+                        config["agent_type"] = str(row_dict["agent_type"]).strip()
+                    break
             conn.close()
-            if row:
-                row_dict = dict(row)
-                if row_dict.get("tts_provider"):
-                    config["tts_provider"] = _normalize_provider(row_dict["tts_provider"])
-                if row_dict.get("voice"):
-                    config["voice"] = str(row_dict["voice"]).strip()
-                if row_dict.get("cartesia_voice_id"):
-                    config["cartesia_voice_id"] = str(row_dict["cartesia_voice_id"]).strip()
-                if row_dict.get("name"):
-                    config["name"] = str(row_dict["name"]).strip()
-                if row_dict.get("agent_type"):
-                    config["agent_type"] = str(row_dict["agent_type"]).strip()
     except Exception as exc:
         logger.debug("SQLite agent lookup failed for %s: %s", agent_id, exc)
 
     # 2. Fast local JSON schema file lookup
-    if not config.get("tts_provider"):
-        try:
-            json_path = _AGENT_SCHEMA_DIR / f"{agent_id}.json"
-            if json_path.exists():
-                with open(json_path, "r", encoding="utf-8") as f:
-                    schema = json.load(f)
-                    provider_config = schema.get("provider_config") or {}
-                    provider = provider_config.get("tts_provider") or schema.get("tts_provider")
-                    if provider:
-                        config["tts_provider"] = _normalize_provider(provider)
-                    voice = provider_config.get("voice") or schema.get("voice")
-                    if voice:
-                        config["voice"] = str(voice).strip()
-                    cartesia_voice_id = provider_config.get("cartesia_voice_id") or schema.get("cartesia_voice_id")
-                    if cartesia_voice_id:
-                        config["cartesia_voice_id"] = str(cartesia_voice_id).strip()
-                    smallest_model = provider_config.get("smallest_model") or schema.get("smallest_model")
-                    if smallest_model:
-                        config["smallest_model"] = str(smallest_model).strip()
-                    if schema.get("name"):
-                        config["name"] = str(schema["name"]).strip()
-                    if schema.get("agent_type"):
-                        config["agent_type"] = str(schema["agent_type"]).strip()
-                    indic_voice_desc = (
-                        provider_config.get("parler_description")
-                        or schema.get("parler_description")
-                        or provider_config.get("indic_parler_voice_description")
-                        or schema.get("indic_parler_voice_description")
-                    )
-                    if indic_voice_desc:
-                        config["indic_parler_voice_description"] = str(indic_voice_desc).strip()
-        except Exception as exc:
-            logger.debug("JSON agent lookup failed for %s: %s", agent_id, exc)
+    if not config.get("voice"):
+        for cid in candidates:
+            try:
+                json_path = _AGENT_SCHEMA_DIR / f"{cid}.json"
+                if json_path.exists():
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        schema = json.load(f)
+                        provider_config = schema.get("provider_config") or {}
+                        provider = provider_config.get("tts_provider") or schema.get("tts_provider")
+                        if provider:
+                            config["tts_provider"] = _normalize_provider(provider)
+                        voice = (
+                            provider_config.get("voice")
+                            or provider_config.get("smallest_voice")
+                            or provider_config.get("voice_id")
+                            or schema.get("voice")
+                            or schema.get("smallest_voice")
+                            or schema.get("voice_id")
+                        )
+                        if voice:
+                            config["voice"] = str(voice).strip()
+                        cartesia_voice_id = provider_config.get("cartesia_voice_id") or schema.get("cartesia_voice_id")
+                        if cartesia_voice_id:
+                            config["cartesia_voice_id"] = str(cartesia_voice_id).strip()
+                        smallest_model = provider_config.get("smallest_model") or schema.get("smallest_model")
+                        if smallest_model:
+                            config["smallest_model"] = str(smallest_model).strip()
+                        if schema.get("name"):
+                            config["name"] = str(schema["name"]).strip()
+                        if schema.get("agent_type"):
+                            config["agent_type"] = str(schema["agent_type"]).strip()
+                        indic_voice_desc = (
+                            provider_config.get("parler_description")
+                            or schema.get("parler_description")
+                            or provider_config.get("indic_parler_voice_description")
+                            or schema.get("indic_parler_voice_description")
+                        )
+                        if indic_voice_desc:
+                            config["indic_parler_voice_description"] = str(indic_voice_desc).strip()
+                        break
+            except Exception as exc:
+                logger.debug("JSON agent lookup failed for %s: %s", cid, exc)
 
     # 3. HTTP API fallback
-    if not config.get("tts_provider"):
-        try:
-            port = os.getenv("PORT", "8000")
-            url = os.getenv("BACKEND_API_URL", f"http://127.0.0.1:{port}") + f"/api/agents/{agent_id}"
-            req = urllib.request.Request(url)
-            with urllib.request.urlopen(req, timeout=1.0) as response:
-                if response.status == 200:
-                    schema = json.loads(response.read().decode())
-                    provider_config = schema.get("provider_config") or {}
-                    provider = provider_config.get("tts_provider") or schema.get("tts_provider")
-                    if provider:
-                        config["tts_provider"] = _normalize_provider(provider)
-                    voice = provider_config.get("voice") or schema.get("voice")
-                    if voice:
-                        config["voice"] = str(voice).strip()
-                    cartesia_voice_id = provider_config.get("cartesia_voice_id") or schema.get("cartesia_voice_id")
-                    if cartesia_voice_id:
-                        config["cartesia_voice_id"] = str(cartesia_voice_id).strip()
-                    if schema.get("name"):
-                        config["name"] = str(schema["name"]).strip()
-                    if schema.get("agent_type"):
-                        config["agent_type"] = str(schema["agent_type"]).strip()
-                    indic_voice_desc = (
-                        provider_config.get("parler_description")
-                        or schema.get("parler_description")
-                        or provider_config.get("indic_parler_voice_description")
-                        or schema.get("indic_parler_voice_description")
-                    )
-                    if indic_voice_desc:
-                        config["indic_parler_voice_description"] = str(indic_voice_desc).strip()
-        except Exception:
-            pass
+    if not config.get("voice"):
+        for cid in candidates:
+            try:
+                port = os.getenv("PORT", "8000")
+                url = os.getenv("BACKEND_API_URL", f"http://127.0.0.1:{port}") + f"/api/agents/{cid}"
+                req = urllib.request.Request(url)
+                with urllib.request.urlopen(req, timeout=1.0) as response:
+                    if response.status == 200:
+                        schema = json.loads(response.read().decode())
+                        provider_config = schema.get("provider_config") or {}
+                        provider = provider_config.get("tts_provider") or schema.get("tts_provider")
+                        if provider:
+                            config["tts_provider"] = _normalize_provider(provider)
+                        voice = (
+                            provider_config.get("voice")
+                            or provider_config.get("smallest_voice")
+                            or provider_config.get("voice_id")
+                            or schema.get("voice")
+                            or schema.get("smallest_voice")
+                            or schema.get("voice_id")
+                            or (schema.get("tts") if isinstance(schema.get("tts"), dict) else {}).get("voice")
+                        )
+                        if voice:
+                            config["voice"] = str(voice).strip()
+                        cartesia_voice_id = provider_config.get("cartesia_voice_id") or schema.get("cartesia_voice_id")
+                        if cartesia_voice_id:
+                            config["cartesia_voice_id"] = str(cartesia_voice_id).strip()
+                        smallest_model = provider_config.get("smallest_model") or schema.get("smallest_model")
+                        if smallest_model:
+                            config["smallest_model"] = str(smallest_model).strip()
+                        if schema.get("name"):
+                            config["name"] = str(schema["name"]).strip()
+                        if schema.get("agent_type"):
+                            config["agent_type"] = str(schema["agent_type"]).strip()
+                        indic_voice_desc = (
+                            provider_config.get("parler_description")
+                            or schema.get("parler_description")
+                            or provider_config.get("indic_parler_voice_description")
+                            or schema.get("indic_parler_voice_description")
+                        )
+                        if indic_voice_desc:
+                            config["indic_parler_voice_description"] = str(indic_voice_desc).strip()
+                        break
+            except Exception:
+                pass
 
     _AGENT_CONFIG_CACHE[agent_id] = (time.time(), config)
     return config

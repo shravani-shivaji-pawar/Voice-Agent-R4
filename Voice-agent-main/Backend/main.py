@@ -689,15 +689,33 @@ def _clean_agent_data_fields(fields: Any) -> list[str]:
 
 def _normalize_agent_record(data: dict) -> dict:
     normalized = dict(data)
+    tts_obj = data.get("tts") if isinstance(data.get("tts"), dict) else {}
+    raw_voice = (
+        data.get("smallest_voice")
+        or data.get("voice")
+        or data.get("voice_id")
+        or tts_obj.get("voice")
+        or "anika"
+    )
+    voice_str = str(raw_voice).strip()
     normalized["name"] = str(normalized.get("name") or "Voice Agent").strip()
-    normalized["voice"] = str(normalized.get("voice") or "11labs-06nek6zjTCD1vCbtc8bc").strip()
+    normalized["voice"] = voice_str
+    normalized["smallest_voice"] = voice_str
+    normalized["voice_id"] = voice_str
     normalized["language"] = str(normalized.get("language") or "English").strip()
     normalized["max_duration"] = int(normalized.get("max_duration") or 300)
     normalized["provider"] = str(normalized.get("provider") or "twilio").strip()
-    stt_provider = str(normalized.get("stt_provider") or "groq").strip().lower()
-    tts_provider = str(normalized.get("tts_provider") or "edge").strip().lower()
-    normalized["stt_provider"] = stt_provider if stt_provider in VALID_STT_PROVIDERS else "groq"
-    normalized["tts_provider"] = tts_provider if tts_provider in VALID_TTS_PROVIDERS else "edge"
+    stt_provider = str(normalized.get("stt_provider") or "smallest").strip().lower()
+    tts_provider = str(normalized.get("tts_provider") or "smallest").strip().lower()
+    normalized["stt_provider"] = stt_provider if stt_provider in VALID_STT_PROVIDERS else "smallest"
+    normalized["tts_provider"] = tts_provider if tts_provider in VALID_TTS_PROVIDERS else "smallest"
+    
+    pro_voices = {"meher", "diya", "arav", "kabir", "anika_pro", "devansh_pro", "rachel", "emily", "james"}
+    if voice_str.lower() in pro_voices:
+        normalized["smallest_model"] = "lightning_v3.1_pro"
+    else:
+        normalized["smallest_model"] = str(data.get("smallest_model") or tts_obj.get("model") or "lightning_v3.1").strip()
+
     normalized["cartesia_voice_id"] = str(normalized.get("cartesia_voice_id") or DEFAULT_CARTESIA_VOICE_ID).strip()
     normalized["parler_description"] = str(normalized.get("parler_description") or "").strip()
     normalized["assigned_email"] = str(normalized.get("assigned_email") or "").strip().lower()
@@ -751,6 +769,8 @@ def _write_agent_runtime_schema(
     type_label = AGENT_TYPE_LABELS.get(agent_data["agent_type"], "Customer advisory team")
     schema["agent_name"] = agent_data["name"]
     schema["voice_id"] = voice_id
+    schema["voice"] = voice_id
+    schema["smallest_voice"] = voice_id
     schema["global_prompt"] = agent_data["script"]
     schema["tts_provider"] = agent_data["tts_provider"]
     schema["stt_provider"] = agent_data["stt_provider"]
@@ -758,6 +778,9 @@ def _write_agent_runtime_schema(
     schema["provider_config"] = {
         "stt_provider": agent_data["stt_provider"],
         "tts_provider": agent_data["tts_provider"],
+        "voice": voice_id,
+        "smallest_voice": voice_id,
+        "voice_id": voice_id,
         "cartesia_voice_id": agent_data["cartesia_voice_id"],
         "smallest_model": agent_data.get("smallest_model", "lightning_v3.1"),
         "parler_description": agent_data.get("parler_description"),
@@ -803,6 +826,11 @@ def _write_agent_runtime_schema(
     os.makedirs(os.path.dirname(schema_path), exist_ok=True)
     with open(schema_path, "w", encoding="utf-8") as schema_file:
         json.dump(schema, schema_file, indent=4)
+    try:
+        from tts.provider import clear_agent_config_cache
+        clear_agent_config_cache(agent_id)
+    except Exception:
+        pass
 
 
 def _write_agent_flow_v2_shadow(

@@ -1,0 +1,80 @@
+{
+    "agent_name": "Quantum Computing Tutor",
+    "voice_id": "anika",
+    "conversation_flow_id": "flow_62fe0dcd",
+    "global_prompt": "You are Quantum Computing Tutor. You specialize strictly in qubits, quantum superposition, and quantum gates.",
+    "conversationFlow": {
+        "global_prompt": "You are Quantum Computing Tutor. You specialize strictly in qubits, quantum superposition, and quantum gates.",
+        "start_node_id": "root_greeting",
+        "nodes": [
+            {
+                "id": "root_greeting",
+                "name": "Initial Greeting",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "Greet the user warmly as Quantum Computing Tutor and confirm identity using the lead name."
+                },
+                "response": "Hello, this is Quantum Computing Tutor from the Customer advisory team. Am I speaking with {{name}}?",
+                "intent_triggers": [
+                    "call_connected"
+                ],
+                "edges": [
+                    {
+                        "id": "to_discovery",
+                        "condition": "user responds",
+                        "destination_node_id": "discovery"
+                    }
+                ]
+            },
+            {
+                "id": "discovery",
+                "name": "Information Discovery",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "Qualify lead interest and collect data fields."
+                },
+                "response": "I'm calling about some premium property options. Would you have a moment?",
+                "collects": [],
+                "edges": [
+                    {
+                        "id": "to_end",
+                        "condition": "conversation finished",
+                        "destination_node_id": "end_node"
+                    }
+                ]
+            },
+            {
+                "id": "end_node",
+                "name": "Conclusion",
+                "type": "end",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "End the call politely."
+                },
+                "response": "Thank you for your time. Have a great day!"
+            }
+        ]
+    },
+    "voice": "anika",
+    "smallest_voice": "anika",
+    "tts_provider": "edge",
+    "stt_provider": "groq",
+    "smallest_model": "lightning_v3.1",
+    "provider_config": {
+        "stt_provider": "groq",
+        "tts_provider": "edge",
+        "voice": "anika",
+        "smallest_voice": "anika",
+        "voice_id": "anika",
+        "cartesia_voice_id": "95d51f79-c397-46f9-b49a-23763d3eaa2d",
+        "smallest_model": "lightning_v3.1",
+        "parler_description": ""
+    },
+    "agent_metadata": {
+        "agent_type": "custom",
+        "assigned_email": "",
+        "client_id": null
+    }
+}

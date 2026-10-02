@@ -160,6 +160,10 @@ export default function AgentBuilderModal({ isOpen, onClose, onAgentGenerated })
         // Apply user selected voice, model, and language directly to generated agent
         const updatedAgent = {
           ...data.agent,
+          voice: voice,
+          smallest_voice: voice,
+          voice_id: voice,
+          smallest_model: model,
           language: language,
           tts: {
             provider: "smallest",

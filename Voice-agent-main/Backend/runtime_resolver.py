@@ -174,7 +174,13 @@ class AgentRuntimeResolver:
             "greeting_response": greeting,
             "greeting": greeting,
             "language": agent.get("language") or "en",
-            "voice": agent.get("smallest_voice") or (agent.get("voice") if agent.get("voice") and agent.get("voice") not in ("emily", "default") else "anika"),
+            "voice": (
+                agent.get("smallest_voice")
+                or agent.get("voice")
+                or agent.get("voice_id")
+                or (agent.get("tts") if isinstance(agent.get("tts"), dict) else {}).get("voice")
+                or "anika"
+            ),
             "stt_provider": agent.get("stt_provider") or "smallest",
             "tts_provider": agent.get("tts_provider") or "smallest",
             "agent_type": agent.get("agent_type") or "custom",

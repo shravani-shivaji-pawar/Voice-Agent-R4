@@ -253,17 +253,18 @@ const makeInitialFormData = (overrides = {}) => ({
 const formDataFromAgent = (agent) => {
   const agentType = agent.agent_type || DEFAULT_AGENT_TYPE;
   const template = AGENT_TYPE_TEMPLATES[agentType] || AGENT_TYPE_TEMPLATES[DEFAULT_AGENT_TYPE];
+  const resolvedVoice = agent.smallest_voice || agent.tts?.voice || agent.voice || agent.voice_id || DEFAULT_SMALLEST_VOICE;
   return makeInitialFormData({
     name: agent.name || '',
-    voice: agent.voice || '11labs-06nek6zjTCD1vCbtc8bc',
+    voice: resolvedVoice,
     language: agent.language || 'English',
     max_duration: agent.max_duration || 300,
     provider: agent.provider || 'twilio',
-    stt_provider: agent.stt_provider || 'groq',
-    tts_provider: agent.tts_provider || 'edge',
+    stt_provider: agent.stt_provider || 'smallest',
+    tts_provider: agent.tts_provider || 'smallest',
     cartesia_voice_id: agent.cartesia_voice_id || DEFAULT_CARTESIA_VOICE_ID,
-    smallest_model: agent.smallest_model || 'lightning_v3.1',
-    smallest_voice: agent.smallest_voice || agent.voice || DEFAULT_SMALLEST_VOICE,
+    smallest_model: agent.smallest_model || agent.tts?.model || 'lightning_v3.1',
+    smallest_voice: resolvedVoice,
     assigned_email: agent.assigned_email || '',
     agent_type: agentType,
     script: agent.script || template.prompt,
@@ -800,9 +801,18 @@ export default function AgentsPage() {
       autoName = `${agentTypeName} - ${voiceName}`;
     }
 
+    const selectedVoice = formData.smallest_voice || formData.voice || DEFAULT_SMALLEST_VOICE;
     const payload = {
       ...formData,
       name: autoName,
+      voice: selectedVoice,
+      smallest_voice: selectedVoice,
+      voice_id: selectedVoice,
+      tts: {
+        provider: formData.tts_provider || 'smallest',
+        model: formData.smallest_model || 'lightning_v3.1',
+        voice: selectedVoice,
+      },
       data_fields: formData.data_fields.split(',').map(s => s.trim()).filter(Boolean)
     };
     const isEdit = modalMode === 'edit' && editingAgentId;

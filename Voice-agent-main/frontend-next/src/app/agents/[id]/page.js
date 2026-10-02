@@ -634,12 +634,16 @@ export default function RetellAgentWorkspacePage() {
 
             {activeConfigTab === "voice" && (
               <SmallestVoiceSelector
-                selectedModel={agent.tts?.model || "lightning_v3.1"}
+                selectedModel={agent.tts?.model || agent.smallest_model || "lightning_v3.1"}
                 selectedLanguage={agent.language || "en"}
-                selectedVoice={agent.tts?.voice || "anika"}
+                selectedVoice={agent.tts?.voice || agent.smallest_voice || agent.voice || agent.voice_id || "anika"}
                 onChange={({ model, language, voice }) => {
                   setAgent({
                     ...agent,
+                    voice,
+                    smallest_voice: voice,
+                    voice_id: voice,
+                    smallest_model: model,
                     language,
                     tts: { ...agent.tts, provider: "smallest", model, voice }
                   });
