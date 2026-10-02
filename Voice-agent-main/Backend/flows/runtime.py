@@ -57,12 +57,27 @@ except ImportError:
     CancelFrame = None
     EndFrame = None
 
-from llm.llm import generate_response
-from llm.language_utils import LanguageTracker, analyze_user_text, localize_template
-from llm.state_manager import StateManager
-from llm.pipeline_logger import pipeline_logger
+try:
+    from llm.llm import generate_response
+    from llm.language_utils import LanguageTracker, analyze_user_text, localize_template
+    from llm.state_manager import StateManager
+    from llm.pipeline_logger import pipeline_logger
+except (ImportError, ModuleNotFoundError):
+    import sys
+    from pathlib import Path
+    _BACKEND_DIR = str(Path(__file__).resolve().parent.parent)
+    if _BACKEND_DIR not in sys.path:
+        sys.path.insert(0, _BACKEND_DIR)
+    from llm.llm import generate_response
+    from llm.language_utils import LanguageTracker, analyze_user_text, localize_template
+    from llm.state_manager import StateManager
+    from llm.pipeline_logger import pipeline_logger
+
 from pipecat.frames.frames import StartFrame
-from stt import config as stt_cfg
+try:
+    from stt import config as stt_cfg
+except (ImportError, ModuleNotFoundError):
+    from stt import config as stt_cfg
 
 # Root-relative path for the agent schema
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -391,7 +406,10 @@ class RealEstateLLMProcessor(FrameProcessor):
         _filler_enabled = os.getenv("TTS_FILLER_ENABLED", "false").strip().lower() in ("1", "true", "yes")
         if _filler_enabled:
             try:
-                from flows.audio_fillers import get_random_filler
+                try:
+                    from .audio_fillers import get_random_filler
+                except (ImportError, ModuleNotFoundError):
+                    from flows.audio_fillers import get_random_filler
                 filler_audio = get_random_filler()
                 if filler_audio:
                     filler_frame = AudioRawFrame(audio=filler_audio, sample_rate=24000, num_channels=1)
@@ -944,9 +962,16 @@ class RealEstateSTTProcessor(FrameProcessor):
 class RealEstateTTSProcessor(FrameProcessor):
     """Turn assistant text into speech, tagged with generation_id for client-side filtering."""
 
-    def __init__(self, turn_state: VoiceTurnState | None = None, agent_id: str = "default"):
+    def __init__(
+        self,
+        turn_state: VoiceTurnState | None = None,
+        agent_id: str = "default",
+        voice_id: str | None = None,
+        agent_config: dict | None = None,
+    ):
         super().__init__()
         self.agent_id = agent_id or "default"
+        self.voice_id = voice_id or (agent_config.get("voice") if isinstance(agent_config, dict) else None)
         self.last_reply = ""
         self.last_reply_at = 0.0
         self._tts_task = None
@@ -1031,7 +1056,7 @@ class RealEstateTTSProcessor(FrameProcessor):
         
     async def _run_tts(self, text, preferred_lang, gen_id, direction, parent_frame=None):
         t_tts_start = time.monotonic()
-        speech_gen = generate_speech_stream(text, preferred_lang, self.agent_id)
+        speech_gen = generate_speech_stream(text, preferred_lang, agent_id=self.agent_id, voice=self.voice_id)
         if not speech_gen: return
 
         chunk_count = 0
@@ -1039,9 +1064,11 @@ class RealEstateTTSProcessor(FrameProcessor):
         try:
             self.last_reply = text
             self.last_reply_at = time.monotonic()
-            logger.info("[TTS] Started synthesis gen_id=%d chars=%d language=%s", gen_id, len(text), preferred_lang or "auto")
+            logger.info("[TTS] Started synthesis agent_id='%s' voice_id='%s' gen_id=%d chars=%d language=%s", self.agent_id, self.voice_id, gen_id, len(text), preferred_lang or "auto")
             logger.info(
-                "[PIPELINE] TTS -> Starting synthesis gen_id=%d chars=%d language=%s",
+                "[PIPELINE] TTS -> Starting synthesis agent_id='%s' voice_id='%s' gen_id=%d chars=%d language=%s",
+                self.agent_id,
+                self.voice_id,
                 gen_id,
                 len(text),
                 preferred_lang or "auto",

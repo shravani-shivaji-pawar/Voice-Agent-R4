@@ -60,8 +60,8 @@ class SmallestAIImprovementsTest(unittest.TestCase):
 
     def test_speaker_resolution_per_model(self):
         """Verify model-voice pairing prevents cross-model voice leakage."""
-        speaker_v31 = tts_smallest._resolve_speaker(speaker="anika", model="lightning_v3.1", language="en")
-        speaker_pro = tts_smallest._resolve_speaker(speaker="meher", model="lightning_v3.1_pro", language="en")
+        speaker_v31, _ = tts_smallest._resolve_speaker(speaker="anika", model="lightning_v3.1", language="en")
+        speaker_pro, _ = tts_smallest._resolve_speaker(speaker="meher", model="lightning_v3.1_pro", language="en")
 
         self.assertEqual(speaker_v31, "anika")
         self.assertEqual(speaker_pro, "meher")

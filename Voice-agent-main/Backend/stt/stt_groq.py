@@ -17,7 +17,15 @@ import numpy as np
 import scipy.io.wavfile as wavfile
 from groq import Groq, RateLimitError
 
-from llm.config import GROQ_API_KEY
+try:
+    from llm.config import GROQ_API_KEY
+except (ImportError, ModuleNotFoundError):
+    import sys
+    from pathlib import Path
+    _BACKEND_DIR = str(Path(__file__).resolve().parent.parent)
+    if _BACKEND_DIR not in sys.path:
+        sys.path.insert(0, _BACKEND_DIR)
+    from llm.config import GROQ_API_KEY
 from . import config
 from metrics.provider_metrics import record_provider_metric
 

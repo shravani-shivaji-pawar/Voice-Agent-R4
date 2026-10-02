@@ -3,7 +3,10 @@ import asyncio
 import re
 import math
 from collections import Counter
-from llm import config as cfg
+try:
+    from . import config as cfg
+except (ImportError, ModuleNotFoundError):
+    from llm import config as cfg
 
 import logging
 import os
@@ -122,7 +125,13 @@ async def analyze_user_intent(user_input: str, history: List[Dict[str, str]]) ->
     with 0ms local bypass for deterministic inputs.
     """
     try:
-        from llm.state_manager import is_hard_out
+        try:
+            from .state_manager import is_hard_out
+        except (ImportError, ModuleNotFoundError):
+            try:
+                from llm.state_manager import is_hard_out
+            except (ImportError, ModuleNotFoundError):
+                from state_manager import is_hard_out
         if is_hard_out(user_input):
             return IntentAnalysis(
                 intent="CLOSING",
@@ -208,7 +217,13 @@ def _check_and_fix_domain_leakage(text: str, domain: str = "real_estate", langua
     if clean_d in ("education", "education_counselling", "aarohi"):
         if _REAL_ESTATE_LEAKAGE_WORDS.search(text):
             logger.warning(f"[DOMAIN GUARD] Real Estate leakage intercepted in Education mode: '{text}'")
-            from llm.language_utils import normalize_language_code
+            try:
+                from .language_utils import normalize_language_code
+            except (ImportError, ModuleNotFoundError):
+                try:
+                    from llm.language_utils import normalize_language_code
+                except (ImportError, ModuleNotFoundError):
+                    from language_utils import normalize_language_code
             lang = normalize_language_code(language)
             if lang in ("hi", "hinglish"):
                 return "मैं आपकी एजुकेशन काउंसलर हूँ। मैं आपको सही कोर्स, कॉलेज, एंट्रेंस एग्जाम और करियर पाथ चुनने में मदद कर सकती हूँ।"
@@ -704,7 +719,13 @@ def _get_contextual_fallback(
     domain: str = "real_estate",
 ) -> str:
     """Generate dynamic, context-aware fallback response based on missing slots and language, avoiding repetition."""
-    from llm.language_utils import normalize_language_code
+    try:
+        from .language_utils import normalize_language_code
+    except (ImportError, ModuleNotFoundError):
+        try:
+            from llm.language_utils import normalize_language_code
+        except (ImportError, ModuleNotFoundError):
+            from language_utils import normalize_language_code
     lang = normalize_language_code(language)
 
     last_assistant_msg = ""
@@ -919,7 +940,13 @@ async def generate_voice_response(
     Generates a speech-optimized, human-like response using Llama 3 / GPT-OSS.
     Language-aware: strict session language lock with bounded Groq retry.
     """
-    from llm.language_utils import get_language_instruction, normalize_language_code
+    try:
+        from .language_utils import get_language_instruction, normalize_language_code
+    except (ImportError, ModuleNotFoundError):
+        try:
+            from llm.language_utils import get_language_instruction, normalize_language_code
+        except (ImportError, ModuleNotFoundError):
+            from language_utils import get_language_instruction, normalize_language_code
     session_lang = normalize_language_code(language)
     lang_directive = get_language_instruction(session_lang)
 
@@ -995,7 +1022,13 @@ async def generate_voice_response(
             return _get_contextual_fallback(session_lang, prompt, is_greeting, history, slots=slots, domain=domain)
 
         # Response Language Validation before TTS Handoff (0ms Fallback, 0 extra LLM calls)
-        from llm.language_utils import validate_response_language
+        try:
+            from .language_utils import validate_response_language
+        except (ImportError, ModuleNotFoundError):
+            try:
+                from llm.language_utils import validate_response_language
+            except (ImportError, ModuleNotFoundError):
+                from language_utils import validate_response_language
         is_valid, reason = validate_response_language(clean_text, session_lang)
         if not is_valid:
             logger.warning("[RESPONSE VALIDATOR] Language mismatch detected: %s. Returning locked contextual fallback.", reason)
@@ -1157,7 +1190,13 @@ async def generate_response(
 
     from langchain_core.messages import HumanMessage, AIMessage
     from intelligence.pipeline import langgraph_engine
-    from llm.state_manager import process_intent_and_slots
+    try:
+        from .state_manager import process_intent_and_slots
+    except (ImportError, ModuleNotFoundError):
+        try:
+            from llm.state_manager import process_intent_and_slots
+        except (ImportError, ModuleNotFoundError):
+            from state_manager import process_intent_and_slots
 
     # 1. Reconstruct graph messages from history
     messages = []

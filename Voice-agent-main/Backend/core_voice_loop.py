@@ -159,12 +159,14 @@ class CallSession:
         agent_id: str = "default",
         preferred_language: str = "en",
         websocket=None,
+        voice_id: str | None = None,
     ) -> None:
         self.system_prompt = system_prompt + SYSTEM_PROMPT_CONSTRAINTS
         self.sample_rate = sample_rate
         self.agent_id = agent_id
         self.preferred_language = preferred_language
         self.websocket = websocket
+        self.voice_id = voice_id
 
         # ── High-Performance Async Queues ─────────────────────────────────────
         self.audio_in_queue: asyncio.Queue[bytes] = asyncio.Queue()
@@ -400,6 +402,7 @@ class CallSession:
                     phrase,
                     preferred_language=self.preferred_language,
                     agent_id=self.agent_id,
+                    voice=self.voice_id,
                 )
 
                 for pcm_chunk in audio_gen:

@@ -8,7 +8,10 @@ improving overall voice naturalness.
 """
 
 import re
-from tts.config import MAX_TEXT_LENGTH
+try:
+    from .config import MAX_TEXT_LENGTH
+except (ImportError, ModuleNotFoundError):
+    from tts.config import MAX_TEXT_LENGTH
 
 ALLOWED_ACRONYMS = {
     "BHK", "RERA", "GST", "PIN", "USD", "INR", "EMI", "EMIS", "OTP",

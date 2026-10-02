@@ -18,7 +18,10 @@ from collections import deque
 import edge_tts
 import numpy as np
 
-from tts.config import EDGE_SPEECH_RATE
+try:
+    from .config import EDGE_SPEECH_RATE
+except (ImportError, ModuleNotFoundError):
+    from tts.config import EDGE_SPEECH_RATE
 from metrics.provider_metrics import record_provider_metric
 
 logger = logging.getLogger(__name__)
@@ -238,7 +241,10 @@ def generate_speech_stream(
     # Expand abbreviations and clean up text so the neural voice stays
     # clear even at an elevated speaking rate.
     try:
-        from tts.speech_formatter import optimize_for_tts
+        try:
+            from .speech_formatter import optimize_for_tts
+        except (ImportError, ModuleNotFoundError):
+            from tts.speech_formatter import optimize_for_tts
         text = optimize_for_tts(text)
     except Exception:
         logger.debug("speech_formatter unavailable, using raw text")

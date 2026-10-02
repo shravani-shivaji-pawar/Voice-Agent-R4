@@ -1,9 +1,9 @@
 {
   "schema_version": "2.0",
-  "id": "flowv2_fb75baeafc6d",
-  "agent_id": "education",
-  "agent_name": "Education Counsellor - Aarohi",
-  "agent_type": "education",
+  "id": "flowv2_7bea9a862de0",
+  "agent_id": "test-anika-bc8f9d",
+  "agent_name": "Test Anika Agent",
+  "agent_type": "custom",
   "status": "draft",
   "runtime_mode": "shadow",
   "default_locale": "en",
@@ -13,29 +13,8 @@
     "mr"
   ],
   "start_node_id": "start",
-  "global_prompt": "You are Education Counsellor - Aarohi, an AI counsellor guiding students on courses, colleges, entrance exams, and study abroad options. Be warm, supportive, and helpful.",
-  "slots": [
-    {
-      "id": "Current Qualification",
-      "required": true,
-      "source": "conversation"
-    },
-    {
-      "id": "Preferred Course",
-      "required": true,
-      "source": "conversation"
-    },
-    {
-      "id": "Preferred City",
-      "required": true,
-      "source": "conversation"
-    },
-    {
-      "id": "Budget",
-      "required": true,
-      "source": "conversation"
-    }
-  ],
+  "global_prompt": "",
+  "slots": [],
   "intents": [
     {
       "id": "confirm",
@@ -72,7 +51,7 @@
       "type": "message",
       "label": "Greeting",
       "response": {
-        "en": "Hello, this is Education Counsellor - Aarohi. Am I speaking with {{name}}?"
+        "en": "Hello, this is Test Anika Agent. Am I speaking with {{name}}?"
       },
       "transitions": [
         {
@@ -93,12 +72,7 @@
       "id": "discovery",
       "type": "slot_collection",
       "label": "Discovery",
-      "collects": [
-        "Current Qualification",
-        "Preferred Course",
-        "Preferred City",
-        "Budget"
-      ],
+      "collects": [],
       "response": {
         "en": "Could you share a little about what you are looking for?"
       },
@@ -177,7 +151,7 @@
   ],
   "metadata": {
     "source": "agent_metadata",
-    "source_language": "Multi (English, Hindi, Hinglish)",
+    "source_language": "en",
     "validation_required": true
   },
   "validation": {

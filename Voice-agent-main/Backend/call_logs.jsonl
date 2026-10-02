@@ -1260,3 +1260,12 @@
 {"timestamp": 1790881581.2092223, "event": "call_started", "start_node": "start"}
 {"timestamp": 1790881608.4046202, "event": "call_started", "start_node": "start"}
 {"timestamp": 1790881629.1173284, "event": "call_started", "start_node": "start"}
+{"timestamp": 1790937983.8990011, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1790938226.741753, "event": "call_started", "start_node": "start"}
+{"timestamp": 1790938418.5565374, "event": "call_started", "start_node": ""}
+{"timestamp": 1790938614.0711396, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1790940652.7682114, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1790940683.780156, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1790945515.5501306, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1790945539.2591472, "event": "call_started", "start_node": "root_greeting"}
+{"timestamp": 1790945576.4262993, "event": "call_started", "start_node": "root_greeting"}

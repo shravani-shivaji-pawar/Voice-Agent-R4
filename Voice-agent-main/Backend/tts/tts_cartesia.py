@@ -53,7 +53,10 @@ def _voice_for(preferred_language: str | None, voice_id: str | None = None) -> s
 
 def _optimize_text(text: str) -> str:
     try:
-        from tts.speech_formatter import optimize_for_tts
+        try:
+            from .speech_formatter import optimize_for_tts
+        except (ImportError, ModuleNotFoundError):
+            from tts.speech_formatter import optimize_for_tts
 
         return optimize_for_tts(text)
     except Exception:

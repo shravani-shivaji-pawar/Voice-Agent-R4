@@ -28,6 +28,9 @@ def clear_agent_config_cache(agent_id: str | None = None) -> None:
     """Clear cached agent provider configurations."""
     if agent_id:
         _AGENT_CONFIG_CACHE.pop(agent_id, None)
+        candidates = ALIAS_MAP.get(agent_id, [])
+        for cid in candidates:
+            _AGENT_CONFIG_CACHE.pop(cid, None)
     else:
         _AGENT_CONFIG_CACHE.clear()
 
@@ -338,6 +341,7 @@ def generate_speech_stream(
     text: str,
     preferred_language: str | None = None,
     agent_id: str = "default",
+    voice: str | None = None,
 ):
     """Yield live TTS audio from the selected provider."""
     if text and text.strip():
@@ -350,7 +354,11 @@ def generate_speech_stream(
     primary_provider = _configured_provider(agent_id)
     schema_cfg = _provider_config_from_agent_schema(agent_id)
     cartesia_voice_id = schema_cfg.get("cartesia_voice_id")
-    custom_voice = schema_cfg.get("voice")
+    custom_voice = (voice or "").strip() or schema_cfg.get("voice")
+    logger.info(
+        "[TTS PROVIDER] agent_id='%s' requested_voice='%s' schema_voice='%s' effective_voice='%s' primary_provider='%s'",
+        agent_id, voice, schema_cfg.get('voice'), custom_voice, primary_provider
+    )
 
     if _env_bool("TTS_SHADOW_MODE", False):
         shadow = _shadow_provider(primary_provider)

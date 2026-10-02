@@ -1,7 +1,7 @@
 {
     "agent_name": "SunCity Real Estate Advisor - Priya",
-    "voice_id": "anika",
-    "conversation_flow_id": "flow_54e62dbb",
+    "voice_id": "divya",
+    "conversation_flow_id": "flow_9112456f",
     "global_prompt": "You are Priya, a senior property consultant at SunCity Real Estate. Assist clients with luxury apartments, property inquiries, pricing, locations, and booking site visits.",
     "conversationFlow": {
         "global_prompt": "You are Priya, a senior property consultant at SunCity Real Estate. Assist clients with luxury apartments, property inquiries, pricing, locations, and booking site visits.",
@@ -63,17 +63,17 @@
             }
         ]
     },
-    "voice": "anika",
-    "smallest_voice": "anika",
+    "voice": "divya",
+    "smallest_voice": "divya",
     "tts_provider": "smallest",
     "stt_provider": "smallest",
     "smallest_model": "lightning_v3.1",
     "provider_config": {
         "stt_provider": "smallest",
         "tts_provider": "smallest",
-        "voice": "anika",
-        "smallest_voice": "anika",
-        "voice_id": "anika",
+        "voice": "divya",
+        "smallest_voice": "divya",
+        "voice_id": "divya",
         "cartesia_voice_id": "95d51f79-c397-46f9-b49a-23763d3eaa2d",
         "smallest_model": "lightning_v3.1",
         "parler_description": ""

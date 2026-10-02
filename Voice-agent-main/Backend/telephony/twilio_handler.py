@@ -139,7 +139,15 @@ async def handle_twilio_stream(
     if os.path.exists(agent_schema_path):
         llm.state_manager = StateManager(agent_schema_path)
 
-    tts = RealEstateTTSProcessor(turn_state=turn_state, agent_id=agent_id)
+    resolved_voice = None
+    try:
+        from runtime_resolver import AgentRuntimeResolver
+        agent_cfg = await AgentRuntimeResolver.resolve(agent_id)
+        resolved_voice = agent_cfg.get("voice")
+    except Exception:
+        pass
+
+    tts = RealEstateTTSProcessor(turn_state=turn_state, agent_id=agent_id, voice_id=resolved_voice)
     sink = TwilioSink(websocket, call_id=call_id, ws_manager=ws_manager, recorder=recorder)
 
     pipeline = Pipeline([source, stt, llm, tts, sink])

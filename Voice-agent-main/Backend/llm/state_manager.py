@@ -8,7 +8,13 @@ from typing import Dict, Any, List, Optional
 from langchain_core.messages import AIMessage, HumanMessage
 
 from intelligence.pipeline import ConversationState
-from llm.llm import analyze_user_intent, generate_voice_response
+try:
+    from .llm import analyze_user_intent, generate_voice_response
+except (ImportError, ModuleNotFoundError):
+    try:
+        from llm.llm import analyze_user_intent, generate_voice_response
+    except (ImportError, ModuleNotFoundError):
+        from llm import analyze_user_intent, generate_voice_response
 
 logger = logging.getLogger("llm.state_manager")
 
@@ -105,7 +111,10 @@ async def process_intent_and_slots(state: ConversationState) -> ConversationStat
         history.append({"role": role, "content": msg.content})
 
     raw_user_text = state.get("user_input", "")
-    from llm.language_utils import normalize_domain_vocabulary
+    try:
+        from .language_utils import normalize_domain_vocabulary
+    except (ImportError, ModuleNotFoundError):
+        from llm.language_utils import normalize_domain_vocabulary
     user_text = normalize_domain_vocabulary(raw_user_text)
     state["user_input"] = user_text
 
@@ -114,7 +123,10 @@ async def process_intent_and_slots(state: ConversationState) -> ConversationStat
     
     # Deterministic local slot extraction pre-pass (0ms fallback)
     try:
-        from llm.llm import _classify_local_intent, _enrich_intent_entities
+        try:
+            from .llm import _classify_local_intent, _enrich_intent_entities
+        except (ImportError, ModuleNotFoundError):
+            from llm.llm import _classify_local_intent, _enrich_intent_entities
         local_info = _classify_local_intent(user_text)
         local_intent = local_info.get("intent", "unclear") if local_info else "unclear"
         local_entities = local_info.get("entities", {}) if local_info else {}
@@ -315,7 +327,10 @@ async def handle_greeting(state: ConversationState) -> ConversationState:
     if not agent_has_spoken:
         lang = state.get("language") or "en"
         domain = state.get("domain") or "real_estate"
-        from llm.language_utils import normalize_language_code
+        try:
+            from .language_utils import normalize_language_code
+        except (ImportError, ModuleNotFoundError):
+            from llm.language_utils import normalize_language_code
         lang = normalize_language_code(lang)
         if domain in ("education", "education_counselling", "aarohi"):
             if lang == "hi":
@@ -667,7 +682,10 @@ async def handle_scheduling(state: ConversationState) -> ConversationState:
 
 async def handle_closing(state: ConversationState) -> ConversationState:
     lang = state.get("language") or "en"
-    from llm.language_utils import normalize_language_code
+    try:
+        from .language_utils import normalize_language_code
+    except (ImportError, ModuleNotFoundError):
+        from llm.language_utils import normalize_language_code
     lang = normalize_language_code(lang)
 
     if lang == "hi":
@@ -700,7 +718,10 @@ async def handle_open_domain_query(state: ConversationState) -> ConversationStat
     user_input = state.get("user_input", "")
     return_node = state.get("pending_return_node", "DISCOVERY")
 
-    from llm.pipeline_logger import pipeline_logger
+    try:
+        from .pipeline_logger import pipeline_logger
+    except (ImportError, ModuleNotFoundError):
+        from llm.pipeline_logger import pipeline_logger
     pipeline_logger.log_event("OPEN_DOMAIN_DETOUR", {
         "user_input": user_input,
         "language": language,
@@ -2428,7 +2449,10 @@ class StateManager:
         self._whatsapp_sent = False
         
         lang = language or "en"
-        from llm.language_utils import normalize_language_code
+        try:
+            from .language_utils import normalize_language_code
+        except (ImportError, ModuleNotFoundError):
+            from llm.language_utils import normalize_language_code
         lang = normalize_language_code(lang)
         self.active_language = lang
         self.conversation_data["language"] = lang

@@ -1483,8 +1483,15 @@ class DatabaseManager:
                     return None
                 data = dict(row)
                 data["data_fields"] = json.loads(data.get("data_fields") or "[]")
-                v_val = data.get("voice") or "anika"
+                v_val = (
+                    data.get("voice")
+                    or data.get("smallest_voice")
+                    or data.get("voice_id")
+                    or (data.get("tts") if isinstance(data.get("tts"), dict) else {}).get("voice")
+                    or "anika"
+                )
                 m_val = data.get("smallest_model") or "lightning_v3.1"
+                data["voice"] = v_val
                 data["smallest_voice"] = v_val
                 data["voice_id"] = v_val
                 data["smallest_model"] = m_val
@@ -1551,7 +1558,15 @@ class DatabaseManager:
                     ),
                 )
                 conn.commit()
-                _CACHE_GET_AGENT.pop(agent_id, None)
+                alias_map = {
+                    "education": ["education", "education_counselling"],
+                    "education_counselling": ["education_counselling", "education"],
+                    "real_estate": ["real_estate", "real_estate_sales", "default"],
+                    "real_estate_sales": ["real_estate_sales", "real_estate", "default"],
+                    "default": ["default", "real_estate_sales", "real_estate"]
+                }
+                for cid in alias_map.get(agent_id, [agent_id]):
+                    _CACHE_GET_AGENT.pop(cid, None)
                 try:
                     from tts.provider import clear_agent_config_cache
                     clear_agent_config_cache(agent_id)
@@ -1561,8 +1576,15 @@ class DatabaseManager:
                 row = conn.execute("SELECT * FROM agents WHERE id=?", (agent_id,)).fetchone()
                 updated = dict(row)
                 updated["data_fields"] = json.loads(updated.get("data_fields") or "[]")
-                v_val = updated.get("voice") or "anika"
+                v_val = (
+                    updated.get("voice")
+                    or updated.get("smallest_voice")
+                    or updated.get("voice_id")
+                    or (updated.get("tts") if isinstance(updated.get("tts"), dict) else {}).get("voice")
+                    or "anika"
+                )
                 m_val = updated.get("smallest_model") or "lightning_v3.1"
+                updated["voice"] = v_val
                 updated["smallest_voice"] = v_val
                 updated["voice_id"] = v_val
                 updated["smallest_model"] = m_val

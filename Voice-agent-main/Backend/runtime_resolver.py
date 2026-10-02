@@ -175,8 +175,8 @@ class AgentRuntimeResolver:
             "greeting": greeting,
             "language": agent.get("language") or "en",
             "voice": (
-                agent.get("smallest_voice")
-                or agent.get("voice")
+                agent.get("voice")
+                or agent.get("smallest_voice")
                 or agent.get("voice_id")
                 or (agent.get("tts") if isinstance(agent.get("tts"), dict) else {}).get("voice")
                 or "anika"

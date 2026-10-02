@@ -675,7 +675,7 @@ async def get_demo_call_qa_readiness(request: Request):
     return _build_demo_call_qa_readiness()
 
 def _voice_id_for_agent(voice: str | None) -> str:
-    raw_voice = (voice or "11labs-06nek6zjTCD1vCbtc8bc").strip()
+    raw_voice = (voice or "anika").strip()
     return VOICE_MAP.get(raw_voice, raw_voice)
 
 
@@ -691,8 +691,8 @@ def _normalize_agent_record(data: dict) -> dict:
     normalized = dict(data)
     tts_obj = data.get("tts") if isinstance(data.get("tts"), dict) else {}
     raw_voice = (
-        data.get("smallest_voice")
-        or data.get("voice")
+        data.get("voice")
+        or data.get("smallest_voice")
         or data.get("voice_id")
         or tts_obj.get("voice")
         or "anika"
@@ -826,9 +826,45 @@ def _write_agent_runtime_schema(
     os.makedirs(os.path.dirname(schema_path), exist_ok=True)
     with open(schema_path, "w", encoding="utf-8") as schema_file:
         json.dump(schema, schema_file, indent=4)
+
+    # Sync alias schema files in AGENTS_DIR & root directory if applicable
+    alias_map = {
+        "education": ["education", "education_counselling"],
+        "education_counselling": ["education_counselling", "education"],
+        "real_estate": ["real_estate", "real_estate_sales", "default"],
+        "real_estate_sales": ["real_estate_sales", "real_estate", "default"],
+        "default": ["default", "real_estate_sales", "real_estate"]
+    }
+    candidates = alias_map.get(agent_id, [agent_id])
+    for alias_id in candidates:
+        if alias_id != agent_id:
+            alias_path = os.path.join(AGENTS_DIR, f"{alias_id}.json")
+            try:
+                os.makedirs(os.path.dirname(alias_path), exist_ok=True)
+                with open(alias_path, "w", encoding="utf-8") as alias_file:
+                    json.dump(schema, alias_file, indent=4)
+            except Exception as _alias_err:
+                logger.debug("Failed syncing alias schema for %s: %s", alias_id, _alias_err)
+
+    if agent_id in ("real_estate", "real_estate_sales"):
+        re_root = os.path.join(os.path.dirname(__file__), "Updated_Real_Estate_Agent.json")
+        try:
+            with open(re_root, "w", encoding="utf-8") as re_f:
+                json.dump(schema, re_f, indent=4)
+        except Exception:
+            pass
+    elif agent_id in ("education", "education_counselling"):
+        edu_root = os.path.join(os.path.dirname(__file__), "Education_Counselling_Agent.json")
+        try:
+            with open(edu_root, "w", encoding="utf-8") as edu_f:
+                json.dump(schema, edu_f, indent=4)
+        except Exception:
+            pass
+
     try:
         from tts.provider import clear_agent_config_cache
-        clear_agent_config_cache(agent_id)
+        for alias_id in candidates:
+            clear_agent_config_cache(alias_id)
     except Exception:
         pass
 
@@ -5089,13 +5125,54 @@ async def duplicate_agent_endpoint(agent_id: str, request: Request):
 
 @app.post("/api/agents/{agent_id}/publish", dependencies=[Depends(require_auth)])
 async def publish_agent_endpoint(agent_id: str):
-    agent = await db.get_agent(agent_id)
-    if not agent:
+    existing = await db.get_agent(agent_id)
+    if not existing:
         raise HTTPException(status_code=404, detail="Agent not found")
-    agent["certification_status"] = "Certified"
-    agent["status"] = "Published"
-    agent["published_at"] = datetime.now().isoformat()
-    updated = await db.update_agent(agent_id, agent)
+        
+    merged = _normalize_agent_record({
+        **existing,
+        "certification_status": "Certified",
+        "status": "Published",
+        "published_at": datetime.now().isoformat()
+    })
+    voice_id = _voice_id_for_agent(merged["voice"])
+
+    assigned_client = None
+    if merged.get("assigned_email"):
+        assigned_client = await db.ensure_client_for_email(merged["assigned_email"])
+
+    schema_path = _agent_schema_path(agent_id, existing.get("schema_path"))
+    _write_agent_runtime_schema(agent_id, schema_path, merged, voice_id, assigned_client)
+    flow_v2_shadow = _write_agent_flow_v2_shadow(agent_id, schema_path, merged, assigned_client)
+
+    merged.update({
+        "client_id": assigned_client.get("id") if assigned_client else None,
+        "schema_path": schema_path,
+    })
+
+    updated = await db.update_agent(agent_id, merged)
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to publish agent")
+
+    if flow_v2_shadow:
+        await db.create_agent_flow_version(
+            agent_id,
+            client_id=flow_v2_shadow["client_id"],
+            schema_version="2.0",
+            status="published",
+            runtime_mode="shadow",
+            artifact_path=flow_v2_shadow["artifact_path"],
+            validation=flow_v2_shadow["validation"],
+        )
+
+    logger.info(
+        "[AGENT PUBLISH] Successfully published agent_id='%s' name='%s' voice='%s' voice_id='%s' status='%s'",
+        agent_id,
+        merged.get("name"),
+        merged.get("voice"),
+        voice_id,
+        merged.get("status"),
+    )
     return updated
 
 @app.delete("/api/agents/{agent_id}", dependencies=[Depends(require_auth)])
@@ -7681,7 +7758,9 @@ async def websocket_voice_live(websocket: WebSocket):
     llm.state_manager.conversation_data["name"] = lead_name
     llm.state_manager.conversation_data["lead_name"] = lead_name
     llm.history.clear()                                      # Fix: flush any prior in-memory history
-    tts    = RealEstateTTSProcessor(turn_state=turn_state, agent_id=agent_id)
+    resolved_voice = agent_config.get("voice") if isinstance(agent_config, dict) else None
+    logger.info("[SESSION INIT live] agent_id='%s' saved_voice='%s' resolved_voice='%s' tts_provider='%s'", agent_id, agent_config.get('voice') if isinstance(agent_config, dict) else 'none', resolved_voice, agent_config.get('tts_provider') if isinstance(agent_config, dict) else 'smallest')
+    tts    = RealEstateTTSProcessor(turn_state=turn_state, agent_id=agent_id, voice_id=resolved_voice, agent_config=agent_config)
     sink   = VoiceLiveSink(websocket)
 
     pipeline    = Pipeline([source, vad, stt, llm, tts, sink])
@@ -7884,7 +7963,9 @@ async def websocket_voice_demo(websocket: WebSocket):
             llm.state_manager.conversation_data["lead_name"] = lead_name
             llm.history.clear()
             llm_ref = llm  # capture ref BEFORE runner_task starts
-            tts    = RealEstateTTSProcessor(turn_state=turn_state, agent_id=agent_id)
+            resolved_voice = agent_config.get("voice") if isinstance(agent_config, dict) else None
+            logger.info("[SESSION INIT demo] agent_id='%s' saved_voice='%s' resolved_voice='%s' tts_provider='%s'", agent_id, agent_config.get('voice') if isinstance(agent_config, dict) else 'none', resolved_voice, agent_config.get('tts_provider') if isinstance(agent_config, dict) else 'smallest')
+            tts    = RealEstateTTSProcessor(turn_state=turn_state, agent_id=agent_id, voice_id=resolved_voice, agent_config=agent_config)
             sink   = VoiceLiveSink(websocket, on_transcript=on_transcript, recorder=recorder)
             logger.info("Voice Demo: Pipeline components created with raw_lang=%s session_lang=%s", raw_lang, requested_lang)
 

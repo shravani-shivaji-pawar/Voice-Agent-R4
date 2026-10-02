@@ -192,7 +192,10 @@ def generate_speech_stream(
 
     try:
         import torch
-        from tts.speech_formatter import optimize_for_tts
+        try:
+            from .speech_formatter import optimize_for_tts
+        except (ImportError, ModuleNotFoundError):
+            from tts.speech_formatter import optimize_for_tts
     except ImportError:
         optimize_for_tts = lambda t: t  # noqa: E731
 

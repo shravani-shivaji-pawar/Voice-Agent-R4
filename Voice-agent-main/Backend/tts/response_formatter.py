@@ -2,7 +2,10 @@
 
 import re
 
-from tts.config import MAX_SENTENCES, MAX_TEXT_LENGTH
+try:
+    from .config import MAX_SENTENCES, MAX_TEXT_LENGTH
+except (ImportError, ModuleNotFoundError):
+    from tts.config import MAX_SENTENCES, MAX_TEXT_LENGTH
 
 
 # Words that signal an incomplete sentence if they appear at the end
@@ -62,7 +65,10 @@ def optimize_for_tts(text: str) -> str:
         return ""
 
     try:
-        from tts.speech_formatter import normalize_caps, normalize_fillers
+        try:
+            from .speech_formatter import normalize_caps, normalize_fillers
+        except (ImportError, ModuleNotFoundError):
+            from tts.speech_formatter import normalize_caps, normalize_fillers
         text = normalize_caps(text)
         text = normalize_fillers(text)
     except Exception:
