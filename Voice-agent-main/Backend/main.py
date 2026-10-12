@@ -4969,6 +4969,14 @@ async def get_agent(agent_id: str):
     agent = await db.get_agent(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+    try:
+        from runtime_resolver import AgentRuntimeResolver
+        resolved = await AgentRuntimeResolver.resolve(agent_id)
+        if resolved and resolved.get("greeting_response"):
+            agent["greeting_response"] = resolved["greeting_response"]
+            agent["greeting"] = resolved["greeting_response"]
+    except Exception as e:
+        logger.warning(f"Could not resolve runtime greeting for agent {agent_id}: {e}")
     return agent
 
 @app.get("/api/clients/resolve")
@@ -6028,10 +6036,12 @@ async def update_agent_flow_endpoint(agent_id: str, request: Request):
         submitted_nodes = body["nodes"]
         submitted_ids = {str(n.get("id")).strip() for n in submitted_nodes if isinstance(n, dict) and n.get("id")}
         
-        # Check 1: Protect start node from deletion
-        start_id = str(flow.get("start_node_id") or "start").strip()
-        if start_id not in submitted_ids:
-            raise HTTPException(status_code=400, detail=f"Cannot delete mandatory start node '{start_id}'")
+        # Check 1: Protect start node from deletion / validation
+        body_start_id = str(body.get("start_node_id") or flow.get("start_node_id") or "start").strip()
+        if body_start_id not in submitted_ids:
+            old_start_id = str(flow.get("start_node_id") or "start").strip()
+            if old_start_id not in submitted_ids:
+                raise HTTPException(status_code=400, detail=f"Cannot delete mandatory start node '{old_start_id}'")
         
         # Check 2: Protect end node requirement
         has_end_node = any(str(n.get("type")).strip() == "end" for n in submitted_nodes if isinstance(n, dict))
@@ -6112,8 +6122,16 @@ async def update_agent_flow_endpoint(agent_id: str, request: Request):
         flow["nodes"] = updated_nodes
         flow["slots"] = list(slots_registry.values())
         
+        start_id_candidate = None
         if "start_node_id" in body and str(body["start_node_id"]).strip() in submitted_ids:
-            flow["start_node_id"] = str(body["start_node_id"]).strip()
+            start_id_candidate = str(body["start_node_id"]).strip()
+        elif str(flow.get("start_node_id") or "").strip() in submitted_ids:
+            start_id_candidate = str(flow.get("start_node_id")).strip()
+        elif updated_nodes:
+            start_id_candidate = updated_nodes[0]["id"]
+
+        if start_id_candidate:
+            flow["start_node_id"] = start_id_candidate
 
     try:
         validated = validate_flow_spec(flow)
@@ -6140,9 +6158,19 @@ async def update_agent_flow_endpoint(agent_id: str, request: Request):
         try:
             with open(schema_path, "r", encoding="utf-8") as f:
                 schema_content = json.load(f)
-            schema_content["conversationFlow"] = _flow_v2_to_runtime_conversation_flow(validated)
+            runtime_cf = _flow_v2_to_runtime_conversation_flow(validated)
+            schema_content["conversationFlow"] = runtime_cf
             with open(schema_path, "w", encoding="utf-8") as f:
                 json.dump(schema_content, f, indent=4)
+
+            # Keep agent greeting_response in DB synced with start node response
+            start_node_obj = next((n for n in runtime_cf.get("nodes", []) if n.get("id") == validated.get("start_node_id")), None)
+            if start_node_obj:
+                start_resp = start_node_obj.get("response") or start_node_obj.get("instruction", {}).get("text")
+                if isinstance(start_resp, dict):
+                    start_resp = start_resp.get("en") or next((v for v in start_resp.values() if str(v).strip()), "")
+                if start_resp and str(start_resp).strip() and str(start_resp).strip() != "Continue.":
+                    await db.update_agent(agent["id"], {"greeting_response": str(start_resp).strip()})
         except Exception as e:
             logger.warning("Could not sync runtime schema for agent %s: %s", agent_id, e)
 
@@ -7752,8 +7780,19 @@ async def websocket_voice_live(websocket: WebSocket):
     stt    = RealEstateSTTProcessor(turn_state=turn_state, agent_id=agent_id, vad_enabled=False)
     llm    = RealEstateLLMProcessor(turn_state=turn_state, agent_id=agent_id, agent_config=agent_config)
     llm.current_language = requested_lang
-    schema_to_use = schema_path or agent_config or {}
+    if agent_config and isinstance(agent_config, dict) and ("conversationFlow" in agent_config or "nodes" in agent_config):
+        schema_to_use = agent_config
+    else:
+        schema_to_use = schema_path or agent_config or {}
     llm.state_manager = StateManager(schema_to_use)
+    if llm.custom_system_prompt:
+        llm.state_manager.custom_system_prompt = llm.custom_system_prompt
+        if not llm.state_manager.global_prompt:
+            llm.state_manager.global_prompt = llm.custom_system_prompt
+    if agent_config and isinstance(agent_config, dict):
+        agent_name = agent_config.get("name") or agent_config.get("agent_name")
+        if agent_name:
+            llm.state_manager.conversation_data["agent_name"] = agent_name
     llm.state_manager.reset_state()                          # Fix: prevent stale session carry-over
     llm.state_manager.conversation_data["name"] = lead_name
     llm.state_manager.conversation_data["lead_name"] = lead_name
@@ -7956,8 +7995,19 @@ async def websocket_voice_demo(websocket: WebSocket):
             stt    = RealEstateSTTProcessor(turn_state=turn_state, agent_id=agent_id, vad_enabled=False)
             llm    = RealEstateLLMProcessor(turn_state=turn_state, agent_id=agent_id, agent_config=agent_config)
             llm.current_language = requested_lang
-            schema_to_use = schema_path or agent_config or {}
+            if agent_config and isinstance(agent_config, dict) and ("conversationFlow" in agent_config or "nodes" in agent_config):
+                schema_to_use = agent_config
+            else:
+                schema_to_use = schema_path or agent_config or {}
             llm.state_manager = StateManager(schema_to_use)
+            if llm.custom_system_prompt:
+                llm.state_manager.custom_system_prompt = llm.custom_system_prompt
+                if not llm.state_manager.global_prompt:
+                    llm.state_manager.global_prompt = llm.custom_system_prompt
+            if agent_config and isinstance(agent_config, dict):
+                agent_name = agent_config.get("name") or agent_config.get("agent_name")
+                if agent_name:
+                    llm.state_manager.conversation_data["agent_name"] = agent_name
             llm.state_manager.reset_state()
             llm.state_manager.conversation_data["name"] = lead_name
             llm.state_manager.conversation_data["lead_name"] = lead_name

@@ -1,0 +1,250 @@
+{
+  "agent_name": "Test Anika Agent",
+  "voice_id": "anika",
+  "conversation_flow_id": "flowv2_7bea9a862de0",
+  "global_prompt": "",
+  "conversationFlow": {
+    "conversation_flow_id": "flowv2_7bea9a862de0",
+    "version": 2,
+    "schema_version": "2.0",
+    "global_prompt": "",
+    "start_node_id": "node_name",
+    "nodes": [
+      {
+        "id": "node_name",
+        "name": "name",
+        "type": "conversation",
+        "instruction": {
+          "type": "prompt",
+          "text": "tell me your name"
+        },
+        "response": "tell me your name",
+        "edges": [
+          {
+            "id": "edge_node_name_1_start",
+            "condition": "Continue",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Continue"
+            },
+            "destination_node_id": "start"
+          }
+        ],
+        "start_speaker": "agent",
+        "intent_triggers": [
+          "call_connected"
+        ]
+      },
+      {
+        "id": "start",
+        "name": "Greeting",
+        "type": "conversation",
+        "instruction": {
+          "type": "prompt",
+          "text": "Hello, this is Test Anika Agent. Am I speaking with {{name}}?"
+        },
+        "response": "Hello, this is Test Anika Agent. Am I speaking with {{name}}?",
+        "edges": [
+          {
+            "id": "edge_start_1_discovery",
+            "condition": "Confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Confirm"
+            },
+            "destination_node_id": "discovery"
+          },
+          {
+            "id": "edge_start_2_end",
+            "condition": "Deny",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Deny"
+            },
+            "destination_node_id": "end"
+          },
+          {
+            "id": "edge_start_3_fallback",
+            "condition": "Unclear",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Unclear"
+            },
+            "destination_node_id": "fallback"
+          }
+        ],
+        "intent_triggers": [
+          "deny"
+        ]
+      },
+      {
+        "id": "discovery",
+        "name": "Discovery",
+        "type": "conversation",
+        "instruction": {
+          "type": "prompt",
+          "text": "Could you share a little about what you are looking for?"
+        },
+        "response": "Could you share a little about what you are looking for?",
+        "edges": [
+          {
+            "id": "edge_discovery_1_confirm_followup",
+            "condition": "Provide Info",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Provide Info"
+            },
+            "destination_node_id": "confirm_followup"
+          },
+          {
+            "id": "edge_discovery_2_confirm_followup",
+            "condition": "Confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Confirm"
+            },
+            "destination_node_id": "confirm_followup"
+          },
+          {
+            "id": "edge_discovery_3_fallback",
+            "condition": "Unclear",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Unclear"
+            },
+            "destination_node_id": "fallback"
+          }
+        ],
+        "intent_triggers": [
+          "confirm",
+          "provide_info"
+        ]
+      },
+      {
+        "id": "fallback",
+        "name": "Clarify",
+        "type": "fallback",
+        "instruction": {
+          "type": "prompt",
+          "text": "Sorry, I did not catch that clearly. Could you repeat it once?"
+        },
+        "response": "Sorry, I did not catch that clearly. Could you repeat it once?",
+        "edges": [
+          {
+            "id": "edge_fallback_1_discovery",
+            "condition": "Provide Info",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Provide Info"
+            },
+            "destination_node_id": "discovery"
+          },
+          {
+            "id": "edge_fallback_2_discovery",
+            "condition": "Confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Confirm"
+            },
+            "destination_node_id": "discovery"
+          },
+          {
+            "id": "edge_fallback_3_end",
+            "condition": "Deny",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Deny"
+            },
+            "destination_node_id": "end"
+          }
+        ],
+        "intent_triggers": [
+          "unclear"
+        ]
+      },
+      {
+        "id": "confirm_followup",
+        "name": "Confirm Follow-up",
+        "type": "conversation",
+        "instruction": {
+          "type": "prompt",
+          "text": "Thanks. I will have the team follow up with the right details."
+        },
+        "response": "Thanks. I will have the team follow up with the right details.",
+        "edges": [
+          {
+            "id": "edge_confirm_followup_1_end",
+            "condition": "Confirm",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Confirm"
+            },
+            "destination_node_id": "end"
+          },
+          {
+            "id": "edge_confirm_followup_2_end",
+            "condition": "Deny",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Deny"
+            },
+            "destination_node_id": "end"
+          },
+          {
+            "id": "edge_confirm_followup_3_fallback",
+            "condition": "Unclear",
+            "transition_condition": {
+              "type": "prompt",
+              "prompt": "Unclear"
+            },
+            "destination_node_id": "fallback"
+          }
+        ],
+        "intent_triggers": [
+          "confirm",
+          "provide_info"
+        ]
+      },
+      {
+        "id": "end",
+        "name": "End",
+        "type": "end",
+        "instruction": {
+          "type": "prompt",
+          "text": "Thank you. Have a good day."
+        },
+        "response": "Thank you. Have a good day.",
+        "edges": [],
+        "intent_triggers": [
+          "confirm",
+          "deny"
+        ]
+      }
+    ]
+  },
+  "voice": "anika",
+  "smallest_voice": "anika",
+  "tts_provider": "smallest",
+  "stt_provider": "smallest",
+  "smallest_model": "lightning_v3.1",
+  "provider_config": {
+    "stt_provider": "smallest",
+    "tts_provider": "smallest",
+    "voice": "anika",
+    "smallest_voice": "anika",
+    "voice_id": "anika",
+    "cartesia_voice_id": "95d51f79-c397-46f9-b49a-23763d3eaa2d",
+    "smallest_model": "lightning_v3.1",
+    "parler_description": ""
+  },
+  "agent_metadata": {
+    "agent_type": "custom",
+    "assigned_email": "",
+    "client_id": null,
+    "flow_v2_live": true,
+    "flow_v2_artifact_path": "db\\agents\\test-anika-bc8f9d.045ef4e9.live.flow.v2.json",
+    "flow_v2_published_at": "2026-10-03T00:05:16.530578",
+    "flow_v2_published_by": null,
+    "flow_v2_runtime_backup_path": "db\\agents\\test-anika-bc8f9d.runtime.backup.3783e819.json"
+  }
+}

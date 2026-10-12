@@ -1,65 +1,255 @@
 {
     "agent_name": "SunCity Real Estate Advisor - Priya",
     "voice_id": "anika",
-    "conversation_flow_id": "flow_54e62dbb",
+    "conversation_flow_id": "flowv2_d334020d9320",
     "global_prompt": "You are Priya, a senior property consultant at SunCity Real Estate. Assist clients with luxury apartments, property inquiries, pricing, locations, and booking site visits.",
     "conversationFlow": {
+        "conversation_flow_id": "flowv2_d334020d9320",
+        "version": 2,
+        "schema_version": "2.0",
         "global_prompt": "You are Priya, a senior property consultant at SunCity Real Estate. Assist clients with luxury apartments, property inquiries, pricing, locations, and booking site visits.",
-        "start_node_id": "root_greeting",
+        "start_node_id": "node_name",
         "nodes": [
             {
-                "id": "root_greeting",
-                "name": "Initial Greeting",
+                "id": "node_name",
+                "name": "name",
                 "type": "conversation",
                 "instruction": {
                     "type": "prompt",
-                    "text": "Greet the user warmly as SunCity Real Estate Advisor - Priya and confirm identity using the lead name."
+                    "text": "what is your name"
                 },
-                "response": "Hello, this is SunCity Real Estate Advisor - Priya from the Real Estate team. Am I speaking with {{name}}?",
-                "intent_triggers": [
-                    "call_connected"
-                ],
+                "response": "what is your name",
                 "edges": [
                     {
-                        "id": "to_discovery",
-                        "condition": "user responds",
-                        "destination_node_id": "discovery"
+                        "id": "edge_node_name_1_node_city",
+                        "condition": "Continue",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Continue"
+                        },
+                        "destination_node_id": "node_city"
                     }
+                ],
+                "start_speaker": "agent",
+                "intent_triggers": [
+                    "call_connected"
+                ]
+            },
+            {
+                "id": "node_city",
+                "name": "city",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "ask city"
+                },
+                "response": "ask city",
+                "edges": [
+                    {
+                        "id": "edge_node_city_1_start",
+                        "condition": "Continue",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Continue"
+                        },
+                        "destination_node_id": "start"
+                    }
+                ],
+                "intent_triggers": [
+                    "deny"
+                ]
+            },
+            {
+                "id": "start",
+                "name": "Greeting",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "Hello, this is SunCity Real Estate Advisor - Priya. Am I speaking with {{name}}?"
+                },
+                "response": "Hello, this is SunCity Real Estate Advisor - Priya. Am I speaking with {{name}}?",
+                "edges": [
+                    {
+                        "id": "edge_start_1_discovery",
+                        "condition": "Confirm",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Confirm"
+                        },
+                        "destination_node_id": "discovery"
+                    },
+                    {
+                        "id": "edge_start_2_end",
+                        "condition": "Deny",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Deny"
+                        },
+                        "destination_node_id": "end"
+                    },
+                    {
+                        "id": "edge_start_3_fallback",
+                        "condition": "Unclear",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Unclear"
+                        },
+                        "destination_node_id": "fallback"
+                    }
+                ],
+                "intent_triggers": [
+                    "deny"
                 ]
             },
             {
                 "id": "discovery",
-                "name": "Information Discovery",
+                "name": "Discovery",
                 "type": "conversation",
                 "instruction": {
                     "type": "prompt",
-                    "text": "Qualify lead interest and collect data fields."
+                    "text": "Could you share a little about what you are looking for?"
                 },
-                "response": "I'm calling about some premium property options. Would you have a moment?",
+                "response": "Could you share a little about what you are looking for?",
+                "edges": [
+                    {
+                        "id": "edge_discovery_1_confirm_followup",
+                        "condition": "Provide Info",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Provide Info"
+                        },
+                        "destination_node_id": "confirm_followup"
+                    },
+                    {
+                        "id": "edge_discovery_2_confirm_followup",
+                        "condition": "Confirm",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Confirm"
+                        },
+                        "destination_node_id": "confirm_followup"
+                    },
+                    {
+                        "id": "edge_discovery_3_fallback",
+                        "condition": "Unclear",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Unclear"
+                        },
+                        "destination_node_id": "fallback"
+                    }
+                ],
+                "intent_triggers": [
+                    "confirm",
+                    "provide_info"
+                ],
                 "collects": [
                     "Name",
                     "Location",
                     "Budget",
                     "Property Type",
                     "Interested"
-                ],
-                "edges": [
-                    {
-                        "id": "to_end",
-                        "condition": "conversation finished",
-                        "destination_node_id": "end_node"
-                    }
                 ]
             },
             {
-                "id": "end_node",
-                "name": "Conclusion",
+                "id": "fallback",
+                "name": "Clarify",
+                "type": "fallback",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "Sorry, I did not catch that clearly. Could you repeat it once?"
+                },
+                "response": "Sorry, I did not catch that clearly. Could you repeat it once?",
+                "edges": [
+                    {
+                        "id": "edge_fallback_1_discovery",
+                        "condition": "Provide Info",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Provide Info"
+                        },
+                        "destination_node_id": "discovery"
+                    },
+                    {
+                        "id": "edge_fallback_2_discovery",
+                        "condition": "Confirm",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Confirm"
+                        },
+                        "destination_node_id": "discovery"
+                    },
+                    {
+                        "id": "edge_fallback_3_end",
+                        "condition": "Deny",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Deny"
+                        },
+                        "destination_node_id": "end"
+                    }
+                ],
+                "intent_triggers": [
+                    "unclear"
+                ]
+            },
+            {
+                "id": "confirm_followup",
+                "name": "Confirm Follow-up",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "Thanks. I will have the team follow up with the right details."
+                },
+                "response": "Thanks. I will have the team follow up with the right details.",
+                "edges": [
+                    {
+                        "id": "edge_confirm_followup_1_end",
+                        "condition": "Confirm",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Confirm"
+                        },
+                        "destination_node_id": "end"
+                    },
+                    {
+                        "id": "edge_confirm_followup_2_end",
+                        "condition": "Deny",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Deny"
+                        },
+                        "destination_node_id": "end"
+                    },
+                    {
+                        "id": "edge_confirm_followup_3_fallback",
+                        "condition": "Unclear",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Unclear"
+                        },
+                        "destination_node_id": "fallback"
+                    }
+                ],
+                "intent_triggers": [
+                    "confirm",
+                    "provide_info"
+                ]
+            },
+            {
+                "id": "end",
+                "name": "End",
                 "type": "end",
                 "instruction": {
                     "type": "prompt",
-                    "text": "End the call politely."
+                    "text": "Thank you. Have a good day."
                 },
-                "response": "Thank you for your time. Have a great day!"
+                "response": "Thank you. Have a good day.",
+                "edges": [],
+                "intent_triggers": [
+                    "confirm",
+                    "deny"
+                ]
             }
         ]
     },
@@ -81,6 +271,11 @@
     "agent_metadata": {
         "agent_type": "real_estate_sales",
         "assigned_email": "",
-        "client_id": null
+        "client_id": null,
+        "flow_v2_live": true,
+        "flow_v2_artifact_path": "db\\agents\\real_estate.ebc1339f.live.flow.v2.json",
+        "flow_v2_published_at": "2026-10-03T14:48:11.825069",
+        "flow_v2_published_by": null,
+        "flow_v2_runtime_backup_path": "db\\agents\\real_estate.runtime.backup.cbe2888a.json"
     }
 }

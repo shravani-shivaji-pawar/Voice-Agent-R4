@@ -22,10 +22,29 @@ CONFIG_PATH = Path(__file__).parent.parent / "Updated_Real_Estate_Agent.json"
 
 def load_agent_config(domain: str = "real_estate") -> Dict[str, Any]:
     try:
-        filename = "Education_Counselling_Agent.json" if domain == "education" else "Updated_Real_Estate_Agent.json"
-        config_path = Path(__file__).parent.parent / filename
-        with open(config_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        backend_dir = Path(__file__).parent.parent
+        agents_dir = backend_dir / "db" / "agents"
+        
+        # 1. Check published file in db/agents
+        agent_file = agents_dir / f"{domain}.json"
+        if agent_file.exists():
+            with open(agent_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+
+        # 2. Check root-level static template files only for explicitly built-in domains
+        if domain in ("education", "education_counselling", "aarohi"):
+            config_path = backend_dir / "Education_Counselling_Agent.json"
+            if config_path.exists():
+                with open(config_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+
+        if domain in ("real_estate", "real_estate_sales", "priya"):
+            config_path = backend_dir / "Updated_Real_Estate_Agent.json"
+            if config_path.exists():
+                with open(config_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+
+        return {}
     except Exception as e:
         logger.error(f"Failed to load agent config for domain '{domain}': {e}")
         return {}
@@ -55,6 +74,27 @@ def is_low_signal(text: str) -> bool:
         return True
 
     return False
+
+import re as _re_stage
+
+_INTERVIEW_PRACTICE_PATTERNS = _re_stage.compile(
+    r"\b(?:question|questions|answer|answers|interview|interviews|mock interview|prepare|preparation|practice|how to answer|give me|tell me about|conduct|ask me|example|examples|data analyst|software engineer|developer|role|roles|topics|skills)\b",
+    _re_stage.IGNORECASE
+)
+_EXPLICIT_FOLLOWUP_PATTERNS = _re_stage.compile(
+    r"\b(?:follow up|call me|connect me|have the team|team follow up|contact me|reach out|send details|i'm done|im done|that's all|thats all|thank you bye|okay bye|bye|wrap up)\b",
+    _re_stage.IGNORECASE
+)
+
+def _is_interview_or_practice_request(text: str) -> bool:
+    if not text:
+        return False
+    return bool(_INTERVIEW_PRACTICE_PATTERNS.search(text))
+
+def _is_explicit_followup_confirmation(text: str) -> bool:
+    if not text:
+        return False
+    return bool(_EXPLICIT_FOLLOWUP_PATTERNS.search(text))
 
 def is_hard_out(text: str) -> bool:
     """Detects strong refusal / hang up intents / goodbye closing signals."""
@@ -1398,7 +1438,7 @@ def _detect_user_question(user_text: str) -> str | None:
         "samajh nahi", "samjha nahi", "clear nahi",
     )
     off_topic_markers = (
-        "weather", "prime minister", "pm", "stock market",
+        "weather", "prime minister", " stock market",
         "cricket", "score", "joke", "song", "sing a song",
         "mausam", "barish", "modi", "khana khaya", "lunch kiya",
         "how are you", "kaise ho", "kasa ahes",
@@ -2135,7 +2175,7 @@ def _detect_user_question(user_text: str) -> str | None:
         "samajh nahi", "samjha nahi", "clear nahi",
     )
     off_topic_markers = (
-        "weather", "prime minister", "pm", "stock market",
+        "weather", "prime minister", " stock market",
         "cricket", "score", "joke", "song", "sing a song",
         "mausam", "barish", "modi", "khana khaya", "lunch kiya",
         "how are you", "kaise ho", "kasa ahes",
@@ -2317,16 +2357,32 @@ class StateManager:
             logger.error("Failed to load StateManager schema from %s: %s", self.json_path, exc)
             return
 
-        flow = self.schema.get("conversationFlow", {})
-        self._repair_generated_greeting(flow)
-        self.global_prompt = flow.get("global_prompt", "")
-        self.start_node_id = flow.get("start_node_id", "")
-        self.nodes = {node["id"]: node for node in flow.get("nodes", []) if "id" in node}
+        flow = self.schema.get("conversationFlow") if isinstance(self.schema.get("conversationFlow"), dict) else (self.schema if isinstance(self.schema, dict) and "nodes" in self.schema else {})
+        if isinstance(flow, dict):
+            self._repair_generated_greeting(flow)
+
+        self.global_prompt = (
+            (flow.get("global_prompt") if isinstance(flow, dict) else None)
+            or self.schema.get("global_prompt")
+            or self.schema.get("system_prompt")
+            or self.schema.get("script")
+            or getattr(self, "custom_system_prompt", "")
+            or ""
+        )
+        self.start_node_id = (flow.get("start_node_id") if isinstance(flow, dict) else None) or self.schema.get("start_node_id") or ""
+        
+        raw_nodes = (flow.get("nodes") if isinstance(flow, dict) else None) or self.schema.get("nodes") or []
+        self.nodes = {node["id"]: node for node in raw_nodes if isinstance(node, dict) and "id" in node}
+
+        # Fall back start_node_id to first node if unspecified or invalid
+        if (not self.start_node_id or self.start_node_id not in self.nodes) and self.nodes:
+            self.start_node_id = next(iter(self.nodes.keys()))
+
         self.tools = {}
-        for tool in flow.get("tools", []):
-            tool_id = tool.get("tool_id")
-            if tool_id:
-                self.tools[tool_id] = tool
+        raw_tools = (flow.get("tools") if isinstance(flow, dict) else None) or self.schema.get("tools") or []
+        for tool in raw_tools:
+            if isinstance(tool, dict) and tool.get("tool_id"):
+                self.tools[tool.get("tool_id")] = tool
 
         # Dynamically determine extraction fields
         self.extraction_fields = set()
@@ -2820,10 +2876,15 @@ class StateManager:
             skip_dest = self._resolve_skip_destination(current_node)
             if skip_dest:
                 next_node = self.nodes.get(skip_dest) or current_node
-                current_node = next_node
-                node_id = current_node.get("id")
-                # Add logging so we can track this fast-forward jump
-                _log("FAST-FORWARD", f"Jumped to {node_id} directly")
+                _log("FAST-FORWARD", f"Jumped to {next_node.get('id')} directly")
+                self.current_node_id = next_node["id"]
+                self.visited_nodes.add(next_node["id"])
+                self._last_node_id = self.current_node_id
+                return self._build_turn_result(
+                    next_node,
+                    user_input=user_text,
+                    node_changed=True,
+                )
 
         # 5. SLOT COMPLETION DERIVATION & ANTI-REPETITION (Fix #5)
         collects = self._collect_slots(current_node)
@@ -3103,6 +3164,14 @@ class StateManager:
             
             # Match by explicit intent triggers OR semantic condition aliases
             if any(i in destination_triggers for i in intents_to_match) or self._edge_condition_matches_intent(condition, intents_to_match):
+                # Guard: Prevent premature jump to confirm-followup or end nodes during active interview practice / questions
+                dest_name = (destination.get("name") or "").lower()
+                dest_id_lower = destination_id.lower()
+                if any(term in dest_id_lower or term in dest_name for term in ["followup", "follow-up", "confirm_followup", "confirm-followup"]):
+                    if _is_interview_or_practice_request(user_text) and not _is_explicit_followup_confirmation(user_text):
+                        _log("STAGE GUARD", f"Prevented premature transition from '{current_node.get('id')}' to '{destination_id}' on active interview request: '{user_text}'")
+                        continue
+
                 if destination.get("type") == "fallback":
                     expected = destination.get("expected_input_type")
                     if expected and self.conversation_data.get(expected):
@@ -3118,6 +3187,24 @@ class StateManager:
             "STATE_STALL",
             f"No matching edge from {current_node['id']} for intent '{intent}'",
         )
+
+        # 2. Check for configured unclear/fallback edge
+        for edge in edges:
+            condition = (edge.get("condition", "") or "").lower().strip()
+            if condition in {"unclear", "fallback", "retry", "unclear_intent"}:
+                dest_id = edge.get("destination_node_id") or edge.get("target_node_id")
+                dest_node = self.nodes.get(dest_id)
+                if dest_node:
+                    _log("STATE", f"{current_node['id']} -> {dest_node['id']} (unclear fallback edge)")
+                    return dest_node
+
+        # Single outgoing edge fallback for message/linear nodes
+        if len(edges) == 1 and intent not in ALL_DENY_INTENTS and not intent.startswith("unclear"):
+            single_dest_id = edges[0].get("destination_node_id")
+            single_dest = self.nodes.get(single_dest_id) if single_dest_id else None
+            if single_dest:
+                _log("STATE", f"{current_node['id']} -> {single_dest['id']} (single edge fallback)")
+                return single_dest
 
         # Callback scheduling should still progress once timeline exists.
         if current_node.get("id") in {"node-1736492391269", "fallback_callback_time"} and self.conversation_data.get("timeline"):
@@ -3394,6 +3481,7 @@ class StateManager:
             "confirm": {
                 "confirm", "affirm", "yes", "acknowledge", "open_yes", "perm_yes",
                 "conv_yes", "interested", "okay", "ok", "sure", "haan", "acha",
+                "continue", "next", "start", "start flow", "proceed",
                 "conversation finished", "finished",
             },
             "deny": {"deny", "no", "reject", "decline", "conv_no", "not_interested"},
@@ -3401,7 +3489,11 @@ class StateManager:
             "provide_intent": {"provide_intent", "intent_active", "intent_info", "ask_info"},
             "provide_info": {
                 "provide_info", "provide info", "info", "particulars", "details",
+                "continue", "next", "start", "start flow", "proceed", "discovery",
                 "conversation finished", "finished",
+            },
+            "discovery": {
+                "provide_info", "provide info", "info", "particulars", "details", "discovery",
             },
             # 2.2 Fallback Routing - retry is a synonym for unclear
             "unclear": {
@@ -3419,6 +3511,15 @@ class StateManager:
             aliases = intent_aliases.get(intent.strip().lower(), set())
             if any(alias.replace("_", " ") in normalized for alias in aliases):
                 return True
+
+        # Fallback for provide_info condition: response that matches info/details/intent provided
+        if any(c in normalized for c in ["provide info", "provide_info", "info", "details", "particulars", "discovery"]):
+            intents_lower = {intent.strip().lower() for intent in intents_to_match}
+            if intents_lower.intersection({"provide_info", "provide info", "confirm", "qualification", "discovery", "provide_intent", "provide_location", "provide_budget", "intent"}):
+                return True
+            if not intents_lower.intersection({"confirm", "deny", "unclear", "deny_time"}):
+                return True
+
         return False
 
     @property
@@ -3434,13 +3535,21 @@ class StateManager:
 
     def _merge_entities(self, entities: dict[str, Any], intent: str = "") -> None:
         entities = dict(entities)
-        if "location" in entities and "preferred_city" in self.entity_keys:
-            entities["preferred_city"] = entities["location"]
-        if "preferred_city" in entities and "location" in self.entity_keys:
-            entities["location"] = entities["preferred_city"]
+        for e_key, e_val in entities.items():
+            if e_val not in (None, ""):
+                clean_k = str(e_key).strip().lower()
+                self.conversation_data[clean_k] = e_val
+                if clean_k in ("name", "user_name", "lead_name"):
+                    self.conversation_data["name"] = e_val
+                    self.conversation_data["user_name"] = e_val
+                    self.conversation_data["lead_name"] = e_val
 
+        if self._last_user_text and not self.conversation_data.get("name"):
+            last_clean = self._last_user_text.strip()
+            if len(last_clean.split()) <= 4 and not any(c in last_clean for c in "?!@#$"):
+                self.conversation_data["name"] = last_clean
+                self.conversation_data["user_name"] = last_clean
         for key in self.entity_keys:
-            # Match keys case-insensitively or with space/underscore normalization
             value = None
             for e_key, e_val in entities.items():
                 if e_key.lower().replace(" ", "_") == key.lower().replace(" ", "_"):
@@ -3449,7 +3558,6 @@ class StateManager:
             if value in (None, ""):
                 continue
 
-            # Map normalized key to canonical field name from extraction_fields if applicable
             canonical_key = key
             if hasattr(self, "extraction_fields"):
                 for field in self.extraction_fields:
@@ -3459,9 +3567,7 @@ class StateManager:
 
             existing = self.conversation_data.get(canonical_key)
             if existing:
-                # Allow overwrite when user explicitly provides via provide_* intent
                 is_explicit_provide = intent.startswith("provide_")
-                # Allow overwrite when existing value is a known-invalid timeline
                 is_stale_timeline = (
                     canonical_key == "timeline"
                     and any(inv in str(existing).lower() for inv in INVALID_TIMELINE_VALUES)
@@ -3471,13 +3577,10 @@ class StateManager:
                 _log("ENTITY OVERWRITE", f"{canonical_key}: \"{existing}\" -> \"{value}\"")
             cleaned = self._clean_entity_value(canonical_key, value)
             if cleaned is None:
-                # H4 FIX: User-facing warning for rejected entities
                 _log("ENTITY SKIPPED/REJECTED", f'Key "{canonical_key}" dropped due to validation failure on value "{value}"')
                 continue
             self.conversation_data[canonical_key] = cleaned
             _log("ENTITY", f"{canonical_key}={cleaned}")
-            
-            # Explicit debug log as requested
             _log("SLOT UPDATED", f"intent={cleaned}" if canonical_key == "intent_value" else f"{canonical_key}={cleaned}")
 
     def _should_skip_node(self, node: dict[str, Any]) -> bool:

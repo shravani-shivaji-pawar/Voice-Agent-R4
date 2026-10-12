@@ -1,0 +1,299 @@
+{
+    "agent_name": "Mock Interview Coach",
+    "global_prompt": "You are a helpful Mock Interview Coach.",
+    "conversation_flow_id": "test_interview_agent",
+    "conversationFlow": {
+        "conversation_flow_id": "test_interview_agent",
+        "version": 2,
+        "schema_version": "2.0",
+        "global_prompt": "",
+        "start_node_id": "node_1",
+        "nodes": [
+            {
+                "id": "node_1",
+                "name": "Name",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "what is your name?"
+                },
+                "response": "what is your name?",
+                "edges": [
+                    {
+                        "id": "edge_node_1_1_education",
+                        "condition": "Continue",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Continue"
+                        },
+                        "destination_node_id": "education"
+                    }
+                ],
+                "start_speaker": "agent",
+                "intent_triggers": [
+                    "call_connected"
+                ]
+            },
+            {
+                "id": "education",
+                "name": "Education",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "what is your education"
+                },
+                "response": "what is your education",
+                "edges": [
+                    {
+                        "id": "edge_education_1_city",
+                        "condition": "Continue",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Continue"
+                        },
+                        "destination_node_id": "city"
+                    }
+                ],
+                "intent_triggers": [
+                    "confirm"
+                ]
+            },
+            {
+                "id": "city",
+                "name": "City",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "tell me your city"
+                },
+                "response": "tell me your city",
+                "edges": [
+                    {
+                        "id": "edge_city_1_greeting",
+                        "condition": "Continue",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Continue"
+                        },
+                        "destination_node_id": "greeting"
+                    }
+                ],
+                "intent_triggers": [
+                    "confirm"
+                ]
+            },
+            {
+                "id": "greeting",
+                "name": "Greeting",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "Hello, this is Mock Interview Coach. Am I speaking with {{name}}?"
+                },
+                "response": "Hello, this is Mock Interview Coach. Am I speaking with {{name}}?",
+                "edges": [
+                    {
+                        "id": "edge_greeting_1_age",
+                        "condition": "Confirm",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Confirm"
+                        },
+                        "destination_node_id": "age"
+                    },
+                    {
+                        "id": "edge_greeting_2_end_node",
+                        "condition": "Deny",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Deny"
+                        },
+                        "destination_node_id": "end_node"
+                    },
+                    {
+                        "id": "edge_greeting_3_clarify",
+                        "condition": "Unclear",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Unclear"
+                        },
+                        "destination_node_id": "clarify"
+                    }
+                ],
+                "intent_triggers": [
+                    "confirm"
+                ]
+            },
+            {
+                "id": "age",
+                "name": "Age",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "tell me your age"
+                },
+                "response": "tell me your age",
+                "edges": [
+                    {
+                        "id": "edge_age_1_discovery",
+                        "condition": "Continue",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Continue"
+                        },
+                        "destination_node_id": "discovery"
+                    }
+                ],
+                "intent_triggers": [
+                    "confirm"
+                ]
+            },
+            {
+                "id": "discovery",
+                "name": "Discovery",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "Could you share a little about what you are looking for?"
+                },
+                "response": "Could you share a little about what you are looking for?",
+                "edges": [
+                    {
+                        "id": "edge_discovery_1_confirm_follow_up",
+                        "condition": "Provide Info",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Provide Info"
+                        },
+                        "destination_node_id": "confirm_follow_up"
+                    },
+                    {
+                        "id": "edge_discovery_2_confirm_follow_up",
+                        "condition": "Confirm",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Confirm"
+                        },
+                        "destination_node_id": "confirm_follow_up"
+                    },
+                    {
+                        "id": "edge_discovery_3_repeat",
+                        "condition": "Unclear",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Unclear"
+                        },
+                        "destination_node_id": "repeat"
+                    }
+                ],
+                "intent_triggers": [
+                    "confirm"
+                ]
+            },
+            {
+                "id": "repeat",
+                "name": "Repeat",
+                "type": "fallback",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "can you please repeat"
+                },
+                "response": "can you please repeat",
+                "edges": [
+                    {
+                        "id": "edge_repeat_1_clarify",
+                        "condition": "Continue",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Continue"
+                        },
+                        "destination_node_id": "clarify"
+                    }
+                ],
+                "intent_triggers": [
+                    "unclear"
+                ]
+            },
+            {
+                "id": "clarify",
+                "name": "Clarify",
+                "type": "fallback",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "Sorry, I did not catch that clearly. Could you repeat it once?"
+                },
+                "response": "Sorry, I did not catch that clearly. Could you repeat it once?",
+                "edges": [
+                    {
+                        "id": "edge_clarify_1_discovery",
+                        "condition": "Confirm",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Confirm"
+                        },
+                        "destination_node_id": "discovery"
+                    },
+                    {
+                        "id": "edge_clarify_2_end_node",
+                        "condition": "Deny",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Deny"
+                        },
+                        "destination_node_id": "end_node"
+                    }
+                ],
+                "intent_triggers": [
+                    "confirm",
+                    "unclear"
+                ]
+            },
+            {
+                "id": "confirm_follow_up",
+                "name": "Confirm Follow-up",
+                "type": "conversation",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "Thanks. I will have the team follow up with the right details."
+                },
+                "response": "Thanks. I will have the team follow up with the right details.",
+                "edges": [
+                    {
+                        "id": "edge_confirm_follow_up_1_clarify",
+                        "condition": "Unclear",
+                        "transition_condition": {
+                            "type": "prompt",
+                            "prompt": "Unclear"
+                        },
+                        "destination_node_id": "clarify"
+                    }
+                ],
+                "intent_triggers": [
+                    "confirm",
+                    "provide_info"
+                ]
+            },
+            {
+                "id": "end_node",
+                "name": "End",
+                "type": "end",
+                "instruction": {
+                    "type": "prompt",
+                    "text": "Thank you. Have a good day."
+                },
+                "response": "Thank you. Have a good day.",
+                "edges": [],
+                "intent_triggers": [
+                    "deny"
+                ]
+            }
+        ]
+    },
+    "agent_metadata": {
+        "flow_v2_live": true,
+        "flow_v2_artifact_path": "db\\agents\\test_interview_agent.ffb951ec.live.flow.v2.json",
+        "flow_v2_published_at": "2026-10-03T14:16:57.925802",
+        "flow_v2_published_by": null,
+        "flow_v2_runtime_backup_path": "db\\agents\\test_interview_agent.runtime.backup.b8cb62aa.json"
+    }
+}

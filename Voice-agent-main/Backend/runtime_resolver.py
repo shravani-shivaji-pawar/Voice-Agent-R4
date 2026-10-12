@@ -119,7 +119,11 @@ class AgentRuntimeResolver:
 
         # Base prompt setup
         base_prompt = (
-            agent.get("script") or agent.get("system_prompt") or f"You are {agent.get('name')}, an AI assistant."
+            agent.get("global_prompt")
+            or agent.get("script")
+            or agent.get("system_prompt")
+            or (agent.get("conversationFlow", {}).get("global_prompt") if isinstance(agent.get("conversationFlow"), dict) else None)
+            or f"You are {agent.get('name', 'AI Assistant')}, an AI assistant."
         )
 
         # Check for applied website knowledge draft strictly belonging to THIS agent_id
@@ -167,7 +171,9 @@ class AgentRuntimeResolver:
             "id": agent.get("id") or agent_id_str,
             "agent_id": agent.get("id") or agent_id_str,
             "name": agent.get("name") or "Unnamed Agent",
+            "agent_name": agent.get("name") or "Unnamed Agent",
             "client_id": agent.get("client_id"),
+            "global_prompt": base_prompt,
             "system_prompt": system_prompt,
             "script": system_prompt,
             "base_prompt": base_prompt,
@@ -197,9 +203,58 @@ class AgentRuntimeResolver:
             "website_knowledge": formatted_knowledge or None,
         }
 
+        # Resolve published conversation flow for custom / default agents
+        conversation_flow = None
+        resolved_schema_path = None
+        try:
+            import os, json
+            from pathlib import Path
+            agents_dir = Path(__file__).resolve().parent / "agents"
+            candidate_files = [
+                os.path.join(agents_dir, f"{agent_id_str}.json"),
+                os.path.join(os.path.dirname(__file__), "Updated_Real_Estate_Agent.json") if agent_id_str in ("real_estate", "real_estate_sales", "priya") else None
+            ]
+            for file_path in candidate_files:
+                if file_path and os.path.exists(file_path):
+                    resolved_schema_path = file_path
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        s_data = json.load(f)
+                        if isinstance(s_data, dict) and "conversationFlow" in s_data:
+                            conversation_flow = s_data["conversationFlow"]
+                            break
+
+            if not conversation_flow:
+                flow_versions = await db.list_agent_flow_versions(agent_id_str)
+                for fv in flow_versions:
+                    art_path = fv.get("artifact_path")
+                    if art_path and os.path.exists(art_path):
+                        with open(art_path, "r", encoding="utf-8") as f:
+                            raw_flow = json.load(f)
+                            from main import _flow_v2_to_runtime_conversation_flow
+                            conversation_flow = _flow_v2_to_runtime_conversation_flow(raw_flow)
+                            break
+        except Exception as _flow_err:
+            logger.warning("[RUNTIME RESOLVER] Flow resolution warning for '%s': %s", agent_id_str, _flow_err)
+
+        if conversation_flow:
+            config["conversationFlow"] = conversation_flow
+            config["start_node_id"] = conversation_flow.get("start_node_id")
+            if resolved_schema_path:
+                config["schema_path"] = resolved_schema_path
+            start_node_id = conversation_flow.get("start_node_id")
+            nodes = conversation_flow.get("nodes", [])
+            start_node = next((n for n in nodes if n.get("id") == start_node_id), None)
+            if start_node:
+                start_resp = start_node.get("response") or start_node.get("instruction", {}).get("text")
+                if isinstance(start_resp, dict):
+                    start_resp = start_resp.get("en") or next((v for v in start_resp.values() if str(v).strip()), "")
+                if start_resp and str(start_resp).strip() and str(start_resp).strip() != "Continue.":
+                    config["greeting_response"] = str(start_resp).strip()
+                    config["greeting"] = str(start_resp).strip()
+
         logger.info(
-            "[RUNTIME RESOLVER] Resolved agent_id='%s' name='%s' type='%s' is_builtin=%s has_knowledge=%s",
-            config["id"], config["name"], config["agent_type"], config["is_builtin"], config["has_applied_website_knowledge"]
+            "[RUNTIME RESOLVER] Resolved agent_id='%s' name='%s' type='%s' is_builtin=%s has_flow=%s",
+            config["id"], config["name"], config["agent_type"], config["is_builtin"], bool(conversation_flow)
         )
         return config
 

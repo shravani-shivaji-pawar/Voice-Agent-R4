@@ -1,0 +1,241 @@
+{
+  "schema_version": "2.0",
+  "id": "flowv2_d334020d9320",
+  "agent_id": "real_estate",
+  "agent_name": "SunCity Real Estate Advisor - Priya",
+  "agent_type": "real_estate_sales",
+  "status": "published",
+  "runtime_mode": "live",
+  "default_locale": "en",
+  "supported_locales": [
+    "en",
+    "hi",
+    "mr"
+  ],
+  "start_node_id": "node_name",
+  "global_prompt": "You are Priya, a senior property consultant at SunCity Real Estate. Assist clients with luxury apartments, property inquiries, pricing, locations, and booking site visits.",
+  "slots": [
+    {
+      "id": "Name",
+      "required": true,
+      "source": "conversation"
+    },
+    {
+      "id": "Location",
+      "required": true,
+      "source": "conversation"
+    },
+    {
+      "id": "Budget",
+      "required": true,
+      "source": "conversation"
+    },
+    {
+      "id": "Property Type",
+      "required": true,
+      "source": "conversation"
+    },
+    {
+      "id": "Interested",
+      "required": true,
+      "source": "conversation"
+    }
+  ],
+  "intents": [
+    {
+      "id": "confirm",
+      "examples": [
+        "yes",
+        "okay",
+        "sure"
+      ]
+    },
+    {
+      "id": "deny",
+      "examples": [
+        "no",
+        "not interested"
+      ]
+    },
+    {
+      "id": "unclear",
+      "examples": [
+        "hmm",
+        "repeat"
+      ]
+    },
+    {
+      "id": "provide_info",
+      "examples": [
+        "my budget is 50 lakh"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "node_name",
+      "type": "message",
+      "label": "name",
+      "response": {
+        "en": "what is your name"
+      },
+      "collects": [],
+      "transitions": [
+        {
+          "intent": "deny",
+          "label": "Continue",
+          "target": "node_city"
+        }
+      ]
+    },
+    {
+      "id": "node_city",
+      "type": "message",
+      "label": "city",
+      "response": {
+        "en": "ask city"
+      },
+      "collects": [],
+      "transitions": [
+        {
+          "intent": "deny",
+          "label": "Continue",
+          "target": "start"
+        }
+      ]
+    },
+    {
+      "id": "start",
+      "type": "message",
+      "label": "Greeting",
+      "response": {
+        "en": "Hello, this is SunCity Real Estate Advisor - Priya. Am I speaking with {{name}}?"
+      },
+      "collects": [],
+      "transitions": [
+        {
+          "intent": "confirm",
+          "label": "Confirm",
+          "target": "discovery"
+        },
+        {
+          "intent": "deny",
+          "label": "Deny",
+          "target": "end"
+        },
+        {
+          "intent": "unclear",
+          "label": "Unclear",
+          "target": "fallback"
+        }
+      ]
+    },
+    {
+      "id": "discovery",
+      "type": "slot_collection",
+      "label": "Discovery",
+      "response": {
+        "en": "Could you share a little about what you are looking for?"
+      },
+      "collects": [
+        "Name",
+        "Location",
+        "Budget",
+        "Property Type",
+        "Interested"
+      ],
+      "transitions": [
+        {
+          "intent": "provide_info",
+          "label": "Provide Info",
+          "target": "confirm_followup"
+        },
+        {
+          "intent": "confirm",
+          "label": "Confirm",
+          "target": "confirm_followup"
+        },
+        {
+          "intent": "unclear",
+          "label": "Unclear",
+          "target": "fallback"
+        }
+      ]
+    },
+    {
+      "id": "fallback",
+      "type": "fallback",
+      "label": "Clarify",
+      "response": {
+        "en": "Sorry, I did not catch that clearly. Could you repeat it once?"
+      },
+      "collects": [],
+      "transitions": [
+        {
+          "intent": "provide_info",
+          "label": "Provide Info",
+          "target": "discovery"
+        },
+        {
+          "intent": "confirm",
+          "label": "Confirm",
+          "target": "discovery"
+        },
+        {
+          "intent": "deny",
+          "label": "Deny",
+          "target": "end"
+        }
+      ]
+    },
+    {
+      "id": "confirm_followup",
+      "type": "message",
+      "label": "Confirm Follow-up",
+      "response": {
+        "en": "Thanks. I will have the team follow up with the right details."
+      },
+      "collects": [],
+      "transitions": [
+        {
+          "intent": "confirm",
+          "label": "Confirm",
+          "target": "end"
+        },
+        {
+          "intent": "deny",
+          "label": "Deny",
+          "target": "end"
+        },
+        {
+          "intent": "unclear",
+          "label": "Unclear",
+          "target": "fallback"
+        }
+      ]
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "label": "End",
+      "response": {
+        "en": "Thank you. Have a good day."
+      },
+      "collects": [],
+      "transitions": []
+    }
+  ],
+  "metadata": {
+    "source": "agent_metadata",
+    "source_language": "hi",
+    "validation_required": true,
+    "live_runtime_unchanged": false,
+    "published_at": "2026-10-03T14:48:11.798643",
+    "published_to": "v1_runtime_schema"
+  },
+  "validation": {
+    "status": "valid",
+    "node_count": 7,
+    "terminal_count": 1
+  }
+}

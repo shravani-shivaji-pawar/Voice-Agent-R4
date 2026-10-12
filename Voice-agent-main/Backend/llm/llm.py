@@ -638,15 +638,17 @@ _AAROHI_PERSONA = (
 def _sanitize_model_name(model_name: Optional[str]) -> str:
     is_groq = isinstance(_client, AsyncGroq)
     if is_groq:
-        if model_name in ("qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"):
+        valid_models = {"qwen/qwen3.8-27b", "openai/gpt-oss-20b", "openai/gpt-oss-120b"}
+        if model_name in valid_models:
             return model_name
-        return "qwen/qwen3.8-27b"
+        return getattr(cfg, "MODEL_NAME", "qwen/qwen3.8-27b") or "qwen/qwen3.8-27b"
     return model_name or "qwen/qwen3.8-27b"
 
 
 def _sanitize_llm_text(text: str | None) -> str:
     if not text:
         return ""
+    text = text.replace("\ufffd", "'")
     replacements = {
         "\u202f": " ",
         "\xa0": " ",
@@ -679,18 +681,24 @@ async def _call_groq_with_retry(
     max_attempts: int = 2,
 ) -> str:
     """Bounded retry helper for Groq API calls to handle 429 Rate Limits & Timeouts."""
+    target_model = _sanitize_model_name(model_name)
     for attempt in range(1, max_attempts + 1):
         try:
             t0 = time.time()
             completion = await _client.chat.completions.create(
-                model=model_name,
+                model=target_model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
+            msg = completion.choices[0].message
+            logger.info("DEBUG GROQ RAW CHOICE MSG: %r", msg)
+            content = (getattr(msg, "content", None) or "").strip()
+            if not content and hasattr(msg, "reasoning") and msg.reasoning:
+                content = str(msg.reasoning).strip()
             latency = time.time() - t0
             logger.info("Groq LLM call succeeded in %.3fs (attempt %d/%d)", latency, attempt, max_attempts)
-            return completion.choices[0].message.content or ""
+            return content
         except RateLimitError as rle:
             wait = 1.0 * attempt
             logger.warning("Groq 429 rate limit hit (attempt %d/%d) — retrying in %.1fs", attempt, max_attempts, wait)
@@ -1053,6 +1061,239 @@ def _quick_is_company_question(text: str) -> bool:
     return bool(_COMPANY_QUESTION_PATTERNS.search(text))
 
 
+def _format_node_response(node: dict | None, conversation_data: dict | None = None, default_lang: str = "en") -> str:
+    if not node or not isinstance(node, dict):
+        return ""
+    resp = node.get("response") or node.get("instruction", {}).get("text") or ""
+    if isinstance(resp, dict):
+        resp = resp.get(default_lang) or resp.get("en") or next((v for v in resp.values() if str(v).strip()), "")
+    text = str(resp or "").strip()
+    if not text or text == "Continue.":
+        text = str(node.get("label") or node.get("id") or "").strip()
+    if conversation_data and isinstance(conversation_data, dict):
+        for k, v in conversation_data.items():
+            if v is not None:
+                text = text.replace(f"{{{{{k}}}}}", str(v)).replace(f"{{{{ {k} }}}}", str(v))
+        user_name = conversation_data.get("name") or conversation_data.get("user_name") or conversation_data.get("lead_name") or ""
+        text = text.replace("{{name}}", str(user_name or "there")).replace("{{ name }}", str(user_name or "there"))
+    else:
+        text = text.replace("{{name}}", "there").replace("{{ name }}", "there")
+    return text
+
+
+def _is_user_question(user_text: str, current_node: Optional[dict[str, Any]] = None) -> bool:
+    """Detect if user input is asking a question or requesting interview practice/info rather than completing node transition."""
+    if not user_text or not user_text.strip():
+        return False
+    clean = user_text.strip().lower()
+    
+    if "?" in clean:
+        return True
+        
+    question_patterns = [
+        r"\bwhat\s+(?:do|does|can|are|is|did|you)\b",
+        r"\bwho\s+(?:are|is|did|am)\b",
+        r"\bwhere\s+(?:are|is|located)\b",
+        r"\bhow\s+(?:does|do|can|is)\b",
+        r"\bcan\s+you\b",
+        r"\bcould\s+you\b",
+        r"\btell\s+me\b",
+        r"\bgive\s+me\b",
+        r"\bwhat\s+you\s+do\b",
+        r"\bwhat\s+is\s+this\b",
+        r"\bwho\s+am\s+i\s+speaking\b",
+        r"\bwhy\s+(?:do|are|is)\b",
+        r"\bwhat\s+do\s+you\b",
+        r"\b(?:prepare|interview|mock|questions?|answers?|conduct|practice|guidance)\b",
+    ]
+    for pat in question_patterns:
+        if re.search(pat, clean):
+            return True
+            
+    return _quick_is_company_question(user_text)
+
+def _is_incomplete_utterance(user_text: str) -> bool:
+    """Detect incomplete utterances like 'I want to...', 'I am trying to...' that lack an objective clause."""
+    if not user_text or not user_text.strip():
+        return False
+    clean = user_text.strip().lower().rstrip(".").rstrip(",")
+    words = clean.split()
+    
+    if user_text.strip().endswith("..."):
+        return True
+        
+    incomplete_phrases = {
+        "i want to",
+        "i would like to",
+        "i am looking to",
+        "i need to",
+        "i plan to",
+        "my goal is to",
+        "so basically",
+        "well i",
+        "actually i",
+        "i am",
+        "i want",
+    }
+    
+    if clean in incomplete_phrases:
+        return True
+        
+    for starter in incomplete_phrases:
+        if clean == starter or (clean.startswith(starter) and len(words) <= 3 and not any(w in clean for w in ["prepare", "interview", "job", "learn", "course", "practice", "buy", "rent"])):
+            return True
+            
+    return False
+
+async def _generate_incomplete_clarification(
+    user_text: str,
+    active_node: Optional[dict[str, Any]],
+    language: str = "en",
+) -> str:
+    """Generate a gentle clarification prompt for incomplete user input like 'I want to...'."""
+    return "Could you complete your thought? What specific goals or interview practice are you looking for?"
+
+async def _generate_llm_response_with_node_context(
+    user_text: str,
+    conversation_history: Optional[List[Dict[str, str]]] = None,
+    system_prompt: Optional[str] = None,
+    active_node: Optional[dict[str, Any]] = None,
+    conversation_data: Optional[dict[str, Any]] = None,
+    language: str = "en",
+    domain: str = "custom",
+    is_question_or_request: bool = False,
+) -> str:
+    """
+    Generates a natural, intelligent LLM response using the agent's full system prompt,
+    conversation history, and current active node context.
+    """
+    node_text = _format_node_response(active_node, conversation_data, default_lang=language) if active_node else ""
+    node_name = (active_node.get("name") or active_node.get("label") or active_node.get("id") or "") if active_node else ""
+
+    # 1. Structural node shortcuts (for strict slot-collection or identity confirmation nodes like Greeting/Name/Education/City)
+    # ONLY when user is NOT asking a complex question or requesting interview content:
+    if node_text and not is_question_or_request:
+        node_name_lower = node_name.lower()
+        node_text_lower = node_text.lower()
+        if any(k in node_name_lower or k in node_text_lower for k in ["spoken question", "greeting", "confirm_follow_up", "end_node", "conversation end"]):
+            return _check_and_fix_domain_leakage(node_text, domain=domain, language=language)
+
+    agent_name = "AI Assistant"
+    if conversation_data and isinstance(conversation_data, dict):
+        agent_name = conversation_data.get("agent_name") or conversation_data.get("name") or agent_name
+    elif system_prompt and "You are " in system_prompt:
+        try:
+            first_sentence = system_prompt.split(".")[0].split("\n")[0]
+            if "You are " in first_sentence:
+                extracted = first_sentence.split("You are ")[1].split(",")[0].strip()
+                if extracted and len(extracted) < 50:
+                    agent_name = extracted
+        except Exception:
+            pass
+
+    default_persona = f"You are {agent_name}, a helpful AI voice assistant on a live phone call."
+    persona = system_prompt or default_persona
+
+    node_context_info = ""
+    if active_node and node_text:
+        node_context_info = f"\nCurrent Active Flow Stage: {node_name}\nStage Purpose / Prompt: {node_text}\n"
+
+    slot_info = ""
+    if conversation_data and isinstance(conversation_data, dict):
+        slots_str = ", ".join(f"{k}: {v}" for k, v in conversation_data.items() if v and k != "language")
+        if slots_str:
+            slot_info = f"Collected Lead Profile: {slots_str}\n"
+
+    instructions = (
+        f"You are an AI voice assistant on a live phone call.\n"
+        f"Follow your persona and system prompt instructions strictly:\n"
+        f"{persona}\n\n"
+        f"{node_context_info}"
+        f"{slot_info}\n"
+        f"Response Rules:\n"
+        f"1. Respond naturally in {language}.\n"
+        f"2. Maintain your assigned persona fully. If the user asks for guidance, questions, or role-specific advice, provide comprehensive, natural, high-quality responses.\n"
+        f"3. Do NOT refuse legitimate user requests that align with your persona.\n"
+        f"4. Keep spoken replies concise, clear, and natural for a voice call (2 to 4 spoken sentences max).\n"
+        f"5. Plain spoken text ONLY — NO markdown formatting, bullet points, or code blocks.\n"
+    )
+
+    messages = [{"role": "system", "content": instructions}]
+
+    if conversation_history:
+        start_idx = 0
+        while start_idx < len(conversation_history) and conversation_history[start_idx].get("role") == "assistant":
+            start_idx += 1
+        for msg in conversation_history[start_idx:]:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if content and role in ("user", "assistant"):
+                messages.append({"role": role, "content": content})
+
+    messages.append({"role": "user", "content": user_text if user_text else "Hello"})
+    logger.info("DEBUG MESSAGES SENT TO GROQ: %r", messages)
+
+    try:
+        reply = await _call_groq_with_retry(
+            messages,
+            getattr(cfg, "MODEL_NAME", "openai/gpt-oss-20b"),
+            max_tokens=400,
+            temperature=0.35,
+            max_attempts=2,
+        )
+        reply = _sanitize_llm_text(reply)
+        logger.info(f"GROQ GENERATED RESPONSE: '{reply}'")
+        if reply and len(reply.strip()) > 3:
+            return _check_and_fix_domain_leakage(reply, domain=domain, language=language)
+    except Exception as exc:
+        logger.warning(f"Error generating LLM response with node context: {exc}")
+
+    if node_text:
+        return _check_and_fix_domain_leakage(node_text, domain=domain, language=language)
+    return f"I am {agent_name}. How can I assist you today?"
+
+async def _generate_question_answer_with_flow_resume(
+    user_text: str,
+    active_node: Optional[dict[str, Any]],
+    conversation_data: dict[str, Any],
+    system_prompt: str,
+    language: str = "en",
+    domain: str = "custom",
+) -> str:
+    """Answer user's question using agent persona and active node context."""
+    return await _generate_llm_response_with_node_context(
+        user_text=user_text,
+        conversation_history=[],
+        system_prompt=system_prompt,
+        active_node=active_node,
+        conversation_data=conversation_data,
+        language=language,
+        domain=domain,
+        is_question_or_request=True,
+    )
+
+async def _generate_contextual_node_transition_reply(
+    user_text: str,
+    current_node: dict[str, Any],
+    conversation_data: dict[str, Any],
+    system_prompt: str,
+    language: str = "en",
+    domain: str = "custom",
+) -> str:
+    """Backward-compatible wrapper calling _generate_llm_response_with_node_context."""
+    return await _generate_llm_response_with_node_context(
+        user_text=user_text,
+        conversation_history=[],
+        system_prompt=system_prompt,
+        active_node=current_node,
+        conversation_data=conversation_data,
+        language=language,
+        domain=domain,
+        is_question_or_request=False,
+    )
+
+
+
 # Legacy backward-compatible RAG wrapper for Pipecat demo sessions
 async def generate_response(
     user_text: str,
@@ -1066,8 +1307,10 @@ async def generate_response(
     Translates legacy Pipecat LLM calls to execute our StateGraph under the hood,
     synchronizing extracted slots back to the legacy state_manager instance.
     """
-    # ── Pre-Transition Interruption Check ─────────────────────────────────────
-    if state_manager:
+    has_flow_nodes = bool(state_manager and hasattr(state_manager, "nodes") and len(state_manager.nodes) > 0)
+
+    # ── Pre-Transition Interruption Check (Only for non-flow RAG agents) ──
+    if state_manager and not has_flow_nodes:
         current_node = state_manager.get_current_node() if hasattr(state_manager, "get_current_node") else None
         current_node_id = state_manager.current_node_id if hasattr(state_manager, "current_node_id") else "GREETING"
         global_prompt = getattr(state_manager, "global_prompt", "") or (state_manager.schema.get("global_prompt", "") if (hasattr(state_manager, "schema") and state_manager.schema) else "")
@@ -1250,17 +1493,28 @@ async def generate_response(
     # 3. Create active Graph state
     domain = "custom"
     sys_prompt = None
-    if state_manager and hasattr(state_manager, "schema") and state_manager.schema:
-        raw_d = state_manager.schema.get("domain") or state_manager.schema.get("agent_id") or state_manager.schema.get("agent_type") or ""
-        if raw_d:
-            domain = raw_d
-        if isinstance(state_manager.schema, dict):
-            sys_prompt = state_manager.schema.get("system_prompt") or state_manager.schema.get("script")
+    if state_manager:
+        sys_prompt = getattr(state_manager, "global_prompt", None) or getattr(state_manager, "custom_system_prompt", None)
+        if hasattr(state_manager, "schema") and state_manager.schema:
+            raw_d = state_manager.schema.get("domain") or state_manager.schema.get("agent_id") or state_manager.schema.get("agent_type") or ""
+            if raw_d:
+                domain = raw_d
+            if not sys_prompt and isinstance(state_manager.schema, dict):
+                sys_prompt = (
+                    state_manager.schema.get("global_prompt")
+                    or state_manager.schema.get("system_prompt")
+                    or state_manager.schema.get("script")
+                    or (state_manager.schema.get("conversationFlow", {}).get("global_prompt") if isinstance(state_manager.schema.get("conversationFlow"), dict) else None)
+                )
     elif runtime_context and runtime_context.get("domain"):
         domain = runtime_context.get("domain")
 
-    if not sys_prompt and state_manager:
-        sys_prompt = getattr(state_manager, "custom_system_prompt", None)
+    if not sys_prompt and runtime_context:
+        sys_prompt = (
+            runtime_context.get("global_prompt")
+            or runtime_context.get("system_prompt")
+            or runtime_context.get("script")
+        )
 
     graph_state = {
         "messages": messages,
@@ -1274,9 +1528,97 @@ async def generate_response(
         "domain": domain,       # ← pass active domain to all node handlers
     }
 
-    # 4. Handle start greeting vs subsequent turns
+    has_flow_nodes = bool(state_manager and hasattr(state_manager, "nodes") and len(state_manager.nodes) > 0)
     _SYSTEM_TRIGGERS = {"__CONNECTED__", "[System:"}
     is_system_trigger = user_text == "__CONNECTED__" or user_text.startswith("[System:")
+
+    if has_flow_nodes:
+        if is_system_trigger:
+            state_manager.reset_state(language=language)
+            start_node = state_manager.get_current_node()
+            if start_node:
+                reply_text = _format_node_response(start_node, state_manager.conversation_data, default_lang=language)
+                safe_spoken = _check_and_fix_domain_leakage(reply_text, domain=domain, language=language)
+                return safe_spoken, False
+
+        node_before = state_manager.get_current_node()
+        sys_prompt = (
+            getattr(state_manager, "global_prompt", None)
+            or getattr(state_manager, "custom_system_prompt", None)
+            or (state_manager.schema.get("global_prompt") if (hasattr(state_manager, "schema") and isinstance(state_manager.schema, dict)) else None)
+            or (state_manager.schema.get("system_prompt") if (hasattr(state_manager, "schema") and isinstance(state_manager.schema, dict)) else None)
+            or (state_manager.schema.get("script") if (hasattr(state_manager, "schema") and isinstance(state_manager.schema, dict)) else None)
+            or (state_manager.schema.get("conversationFlow", {}).get("global_prompt") if (hasattr(state_manager, "schema") and isinstance(state_manager.schema, dict) and isinstance(state_manager.schema.get("conversationFlow"), dict)) else None)
+            or ""
+        )
+
+        agent_name = "AI Assistant"
+        if state_manager and hasattr(state_manager, "schema") and isinstance(state_manager.schema, dict):
+            agent_name = state_manager.schema.get("agent_name") or state_manager.schema.get("name") or agent_name
+        elif state_manager and hasattr(state_manager, "conversation_data") and isinstance(state_manager.conversation_data, dict):
+            agent_name = state_manager.conversation_data.get("agent_name") or agent_name
+
+        fallback_sys_prompt = f"You are {agent_name}, a professional AI voice assistant."
+        effective_sys_prompt = sys_prompt or fallback_sys_prompt
+
+        # 1. Check for User Question / Interruption or Interview Prep / Mock Interview Request
+        if _is_user_question(user_text, node_before):
+            logger.info(f"[HYBRID FLOW] Question/Request detected: '{user_text}'. Generating natural LLM response using persona and history.")
+            ans = await _generate_llm_response_with_node_context(
+                user_text=user_text,
+                conversation_history=conversation_history or [],
+                system_prompt=effective_sys_prompt,
+                active_node=node_before,
+                conversation_data=state_manager.conversation_data,
+                language=language,
+                domain=domain,
+                is_question_or_request=True,
+            )
+            return ans, False
+
+        # 2. Check for Incomplete Utterance
+        if _is_incomplete_utterance(user_text):
+            logger.info(f"[HYBRID FLOW] Incomplete utterance detected: '{user_text}'. Requesting completion without advancing flow.")
+            clarification = await _generate_incomplete_clarification(user_text, node_before, language=language)
+            return clarification, False
+
+        # 3. Classify intent & entities for flow graph transition
+        local_info = _classify_local_intent(user_text)
+        intent = local_info.get("intent", "unclear") if local_info else "unclear"
+        entities = local_info.get("entities", {}) if local_info else {}
+
+        if (not local_info or intent not in {"unclear", "confirm", "deny", "provide_info"}) and not is_system_trigger:
+            try:
+                analysis = await analyze_user_intent(user_text, conversation_history or [])
+                if getattr(analysis, "intent", None):
+                    intent = analysis.intent
+                if getattr(analysis, "entities", None) and isinstance(analysis.entities, dict):
+                    entities.update(analysis.entities)
+            except Exception:
+                pass
+
+        # Execute node transition in state manager
+        turn = state_manager.execute_transition(user_text, {"intent": intent, "entities": entities})
+        current_node = turn.node or state_manager.get_current_node() or {}
+
+        # 4. Generate response using LLM with full system prompt, node context, and history
+        reply_text = await _generate_llm_response_with_node_context(
+            user_text=user_text,
+            conversation_history=conversation_history or [],
+            system_prompt=effective_sys_prompt,
+            active_node=current_node,
+            conversation_data=state_manager.conversation_data,
+            language=language,
+            domain=domain,
+            is_question_or_request=False,
+        )
+
+        if hasattr(state_manager, "record_response") and reply_text:
+            state_manager.record_response(reply_text)
+
+        safe_spoken = _check_and_fix_domain_leakage(reply_text, domain=domain, language=language)
+        return safe_spoken, turn.is_terminal
+
     if is_system_trigger:
         graph_state["current_node"] = "GREETING"
         graph_state["user_input"] = ""
@@ -1286,7 +1628,7 @@ async def generate_response(
         last_confidence = getattr(state_manager, "last_intent_confidence", 1.0) if state_manager else 1.0
         word_count = len(user_text.split())
         
-        if (cfg.ENABLE_SINGLE_CALL_FAST_PATH and not is_first_turn and word_count <= 15 and last_confidence > 0.8) or sys_prompt:
+        if (cfg.ENABLE_SINGLE_CALL_FAST_PATH and not is_first_turn and word_count <= 15 and last_confidence > 0.8) or (sys_prompt and not has_flow_nodes):
             logger.info("Taking single-call fast path for LLM response.")
             global_prompt = sys_prompt or ""
             if not global_prompt and state_manager:
@@ -1540,8 +1882,8 @@ _DENIAL_TEXTS = {"no", "nope", "nah", "na", "nahi", "nahin", "nhi", "नही�
 def _classify_local_intent(user_text: str) -> dict[str, Any] | None:
     clean_text = re.sub(r"[^\w\s'?]", " ", (user_text or "").strip().lower())
     clean_text = re.sub(r"\s+", " ", clean_text).strip()
-    if not clean_text:
-        return None
+    unclear_words = {"huh", "what", "pardon", "repeat", "sorry", "didnt catch", "didn't catch", "say again", "could you repeat", "excuse me"}
+    words = set(clean_text.split())
 
     entities: dict[str, Any] = {
         "current_qualification": None,
@@ -1556,6 +1898,9 @@ def _classify_local_intent(user_text: str) -> dict[str, Any] | None:
         "career_goal": None,
         "confirmation": None,
     }
+
+    if words.intersection(unclear_words) or any(w in clean_text for w in unclear_words):
+        return {"intent": "unclear", "entities": entities}
 
     qual = _extract_qualification_entity(user_text)
     course = _extract_course_entity(user_text)
@@ -1588,8 +1933,21 @@ def _classify_local_intent(user_text: str) -> dict[str, Any] | None:
         elif course and not qual:
             entities["preferred_course"] = course
 
+    name_match = re.search(r"\b(?:my name is|i am|this is|call me|myself)\s+([a-zA-Z]+)\b", clean_text, re.IGNORECASE)
+    if name_match:
+        entities["user_name"] = name_match.group(1).capitalize()
+    elif len(words) == 1 and clean_text.isalpha() and not any(val is not None for val in entities.values()) and clean_text not in _CONFIRMATION_TEXTS and clean_text not in _DENIAL_TEXTS and not words.intersection(unclear_words):
+        entities["user_name"] = clean_text.capitalize()
+
     if any(val is not None for val in entities.values()):
         return {"intent": "provide_info", "entities": entities}
+
+    _UNCLEAR_TEXTS = {
+        "huh", "what", "pardon", "repeat", "sorry", "didnt catch", "didn't catch",
+        "what did you say", "say again", "could you repeat", "can you repeat", "excuse me",
+    }
+    if any(phrase in clean_text for phrase in _UNCLEAR_TEXTS):
+        return {"intent": "unclear", "entities": entities}
 
     if clean_text in _CONFIRMATION_TEXTS:
         entities["confirmation"] = "yes"
@@ -1826,16 +2184,18 @@ def _search_json_knowledge(user_text: str, nodes: list[dict[str, Any]], language
         "which company are you calling from"
     ]
     if any(trigger in query_clean for trigger in company_overview_triggers):
-        if domain == "education":
+        if domain in ("education", "education_counselling", "aarohi"):
             if language in ("hi", "hinglish"):
                 return "हम एक एजुकेशन काउंसलिंग प्लेटफॉर्म हैं जो स्टूडेंट्स को सही कोर्स, कॉलेज, एंट्रेंस एग्जाम और स्टडी एब्रॉड के लिए गाइड करते हैं।"
             elif language == "mr":
                 return "आम्ही एक एज्युकेशन कौन्सिलिंग प्लॅटफॉर्म आहोत जो विद्यार्थ्यांना योग्य कोर्स, कॉलेज आणि अभ्यासासाठी मार्गदर्शन करतो."
             return "We are an AI Education Counselling platform helping students discover suitable courses, colleges, entrance exams, and study abroad options."
-        else:
+        elif domain in ("real_estate", "real_estate_sales", "priya"):
             if language in ("hi", "hinglish"):
                 return "सनसिटी अपार्टमेंट्स जयपुर, जोधपुर और मदुरै में स्थित एक अग्रणी रियल एस्टेट डेवलपर है।"
             return "Suncity Apartments is a premier real estate developer operating in Jaipur, Jodhpur, and Madurai."
+        else:
+            return None
 
     for node in nodes:
         node_name = (node.get("name") or "").lower()

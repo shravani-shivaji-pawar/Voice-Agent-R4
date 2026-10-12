@@ -74,7 +74,7 @@ export default function RetellAgentWorkspacePage() {
           setMessages([
             {
               role: "assistant",
-              content: data.greeting_response || `Hello! I'm ${data.name}. How can I assist you today?`,
+              content: data.greeting_response || data.greeting || `Hello! I'm ${data.name}. How can I assist you today?`,
               timestamp: new Date().toLocaleTimeString(),
             },
           ]);

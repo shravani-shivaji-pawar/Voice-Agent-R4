@@ -1,0 +1,215 @@
+{
+  "schema_version": "2.0",
+  "id": "mock_interview_coach_11",
+  "name": "Mock Interview Coach 11 Nodes",
+  "start_node_id": "node_1",
+  "default_locale": "en",
+  "runtime_mode": "live",
+  "status": "published",
+  "nodes": [
+    {
+      "id": "node_1",
+      "type": "message",
+      "label": "Name",
+      "response": {
+        "en": "what is your name?"
+      },
+      "transitions": [
+        {
+          "intent": "confirm",
+          "label": "Continue",
+          "target": "education"
+        }
+      ]
+    },
+    {
+      "id": "education",
+      "type": "message",
+      "label": "Education",
+      "response": {
+        "en": "what is your education"
+      },
+      "transitions": [
+        {
+          "intent": "confirm",
+          "label": "Continue",
+          "target": "city"
+        }
+      ]
+    },
+    {
+      "id": "city",
+      "type": "message",
+      "label": "City",
+      "response": {
+        "en": "tell me your city"
+      },
+      "transitions": [
+        {
+          "intent": "confirm",
+          "label": "Continue",
+          "target": "greeting"
+        }
+      ]
+    },
+    {
+      "id": "greeting",
+      "type": "message",
+      "label": "Greeting",
+      "response": {
+        "en": "Hello, this is Mock Interview Coach. Am I speaking with {{name}}?"
+      },
+      "transitions": [
+        {
+          "intent": "confirm",
+          "label": "Confirm",
+          "target": "age"
+        },
+        {
+          "intent": "deny",
+          "label": "Deny",
+          "target": "end_node"
+        },
+        {
+          "intent": "unclear",
+          "label": "Unclear",
+          "target": "clarify"
+        }
+      ]
+    },
+    {
+      "id": "age",
+      "type": "message",
+      "label": "Age",
+      "response": {
+        "en": "tell me your age"
+      },
+      "transitions": [
+        {
+          "intent": "confirm",
+          "label": "Continue",
+          "target": "discovery"
+        }
+      ]
+    },
+    {
+      "id": "discovery",
+      "type": "message",
+      "label": "Discovery",
+      "response": {
+        "en": "Could you share a little about what you are looking for?"
+      },
+      "transitions": [
+        {
+          "intent": "provide_info",
+          "label": "Provide Info",
+          "target": "confirm_follow_up"
+        },
+        {
+          "intent": "confirm",
+          "label": "Confirm",
+          "target": "confirm_follow_up"
+        },
+        {
+          "intent": "unclear",
+          "label": "Unclear",
+          "target": "repeat"
+        }
+      ]
+    },
+    {
+      "id": "repeat",
+      "type": "fallback",
+      "label": "Repeat",
+      "response": {
+        "en": "can you please repeat"
+      },
+      "transitions": [
+        {
+          "intent": "confirm",
+          "label": "Continue",
+          "target": "clarify"
+        }
+      ]
+    },
+    {
+      "id": "clarify",
+      "type": "fallback",
+      "label": "Clarify",
+      "response": {
+        "en": "Sorry, I did not catch that clearly. Could you repeat it once?"
+      },
+      "transitions": [
+        {
+          "intent": "confirm",
+          "label": "Confirm",
+          "target": "discovery"
+        },
+        {
+          "intent": "deny",
+          "label": "Deny",
+          "target": "end_node"
+        }
+      ]
+    },
+    {
+      "id": "confirm_follow_up",
+      "type": "message",
+      "label": "Confirm Follow-up",
+      "response": {
+        "en": "Thanks. I will have the team follow up with the right details."
+      },
+      "transitions": [
+        {
+          "intent": "confirm",
+          "label": "Confirm",
+          "target": "take_care"
+        },
+        {
+          "intent": "deny",
+          "label": "Deny",
+          "target": "take_care"
+        },
+        {
+          "intent": "unclear",
+          "label": "Unclear",
+          "target": "clarify"
+        }
+      ]
+    },
+    {
+      "id": "take_care",
+      "type": "message",
+      "label": "Take Care",
+      "response": {
+        "en": "take care"
+      },
+      "transitions": [
+        {
+          "intent": "confirm",
+          "label": "Continue",
+          "target": "end_node"
+        }
+      ]
+    },
+    {
+      "id": "end_node",
+      "type": "end",
+      "label": "End",
+      "response": {
+        "en": "Thank you. Have a good day."
+      },
+      "transitions": []
+    }
+  ],
+  "validation": {
+    "status": "valid",
+    "node_count": 11,
+    "terminal_count": 1
+  },
+  "metadata": {
+    "live_runtime_unchanged": false,
+    "published_at": "2026-10-03T00:49:22.013612",
+    "published_to": "v1_runtime_schema"
+  }
+}

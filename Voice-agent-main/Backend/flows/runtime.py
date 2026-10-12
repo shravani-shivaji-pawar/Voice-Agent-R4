@@ -181,12 +181,18 @@ class RealEstateLLMProcessor(FrameProcessor):
             except Exception as _cfg_err:
                 logger.warning("[LLM PROCESSOR] Could not load agent config for %s: %s", self.agent_id, _cfg_err)
 
-        self.custom_system_prompt = self.agent_config.get("script") or self.agent_config.get("system_prompt")
+        self.custom_system_prompt = (
+            self.agent_config.get("global_prompt")
+            or self.agent_config.get("script")
+            or self.agent_config.get("system_prompt")
+            or (self.agent_config.get("conversationFlow", {}).get("global_prompt") if isinstance(self.agent_config.get("conversationFlow"), dict) else None)
+        )
         self.custom_greeting = self.agent_config.get("greeting_response") or self.agent_config.get("greeting")
         
         if self.agent_config:
-            if self.custom_system_prompt and "system_prompt" not in self.agent_config:
+            if self.custom_system_prompt:
                 self.agent_config["system_prompt"] = self.custom_system_prompt
+                self.agent_config["global_prompt"] = self.custom_system_prompt
             if self.custom_greeting and "greeting_response" not in self.agent_config:
                 self.agent_config["greeting_response"] = self.custom_greeting
 
@@ -206,17 +212,27 @@ class RealEstateLLMProcessor(FrameProcessor):
         self.last_user_at = 0.0
         self._booted = False
         
-        if not schema_path and agent_id:
-            if agent_id in ("education_counselling", "education", "aarohi"):
-                schema_path = os.path.join(_ROOT, "Education_Counselling_Agent.json")
-            elif agent_id in ("real_estate", "real_estate_sales", "priya"):
-                schema_path = os.path.join(_ROOT, "Updated_Real_Estate_Agent.json")
-            elif self.agent_config:
-                schema_path = self.agent_config
-            else:
-                schema_path = None
-        schema_to_use = schema_path if schema_path is not None else (self.agent_config or {})
+        if self.agent_config and isinstance(self.agent_config, dict) and ("conversationFlow" in self.agent_config or "nodes" in self.agent_config):
+            schema_to_use = self.agent_config
+        else:
+            if not schema_path and agent_id:
+                if agent_id in ("education_counselling", "education", "aarohi"):
+                    schema_path = os.path.join(_ROOT, "Education_Counselling_Agent.json")
+                elif agent_id in ("real_estate", "real_estate_sales", "priya"):
+                    schema_path = os.path.join(_ROOT, "Updated_Real_Estate_Agent.json")
+                elif self.agent_config:
+                    schema_path = self.agent_config
+                else:
+                    schema_path = None
+            schema_to_use = schema_path if schema_path is not None else (self.agent_config or {})
         self.state_manager = StateManager(schema_to_use)
+        if self.custom_system_prompt:
+            self.state_manager.custom_system_prompt = self.custom_system_prompt
+            if not self.state_manager.global_prompt:
+                self.state_manager.global_prompt = self.custom_system_prompt
+        if self.agent_config and ("name" in self.agent_config or "agent_name" in self.agent_config):
+            agent_name = self.agent_config.get("name") or self.agent_config.get("agent_name")
+            self.state_manager.conversation_data["agent_name"] = agent_name
         self._current_gen_id = 0
         self._fallback_replies = [
             "Sorry, I didn't catch that clearly. Could you repeat that once?",
@@ -267,29 +283,9 @@ class RealEstateLLMProcessor(FrameProcessor):
 
             logger.info("[PIPELINE] LLM -> Received StartFrame. Triggering initial greeting...")
             reply = None
-            if self.custom_greeting:
-                reply = self.custom_greeting
-            elif self.custom_system_prompt:
-                from llm.llm import generate_voice_response
+            has_flow_nodes = bool(self.state_manager and hasattr(self.state_manager, "nodes") and len(self.state_manager.nodes) > 0)
+            if has_flow_nodes:
                 try:
-                    reply = await asyncio.wait_for(
-                        generate_voice_response(
-                            prompt="Generate initial greeting for call connection.",
-                            history=[],
-                            language=self.current_language,
-                            is_greeting=True,
-                            domain=self.agent_config.get("agent_type", "custom"),
-                            system_prompt_override=self.custom_system_prompt,
-                        ),
-                        timeout=5.0
-                    )
-                except Exception as exc:
-                    logger.warning("[PIPELINE] LLM -> Dynamic start greeting failed: %s", exc)
-                    agent_name = self.agent_config.get("agent_name", "your assistant")
-                    reply = f"Hello, I am {agent_name}. How can I help you today?"
-            else:
-                try:
-                    # 2. CIRCUIT BREAKER (Timeout) — allow 8s for two sequential LLM calls
                     result = await asyncio.wait_for(generate_response(
                         user_text=CALL_CONNECTED_TRIGGER,
                         conversation_history=self.history,
@@ -297,13 +293,35 @@ class RealEstateLLMProcessor(FrameProcessor):
                         state_manager=self.state_manager,
                         allow_transition=False,
                     ), timeout=8.0)
-                    # generate_response returns (reply_text, is_terminal) tuple
                     if isinstance(result, tuple):
                         reply = result[0]
                     else:
                         reply = result
                 except BaseException as exc:
-                    logger.warning("[PIPELINE] LLM -> Start greeting fallback due to error: %s", exc)
+                    logger.warning("[PIPELINE] LLM -> Flow start greeting error: %s", exc)
+
+            if not reply:
+                if self.custom_greeting:
+                    reply = self.custom_greeting
+                elif self.custom_system_prompt:
+                    from llm.llm import generate_voice_response
+                    try:
+                        reply = await asyncio.wait_for(
+                            generate_voice_response(
+                                prompt="Generate initial greeting for call connection.",
+                                history=[],
+                                language=self.current_language,
+                                is_greeting=True,
+                                domain=self.agent_config.get("agent_type", "custom"),
+                                system_prompt_override=self.custom_system_prompt,
+                            ),
+                            timeout=5.0
+                        )
+                    except Exception as exc:
+                        logger.warning("[PIPELINE] LLM -> Dynamic start greeting failed: %s", exc)
+                        agent_name = self.agent_config.get("name", "your assistant")
+                        reply = f"Hello, I am {agent_name}. How can I help you today?"
+                else:
                     reply = "Hello, how can I help you today?"
 
             if reply:
@@ -421,9 +439,9 @@ class RealEstateLLMProcessor(FrameProcessor):
 
         t_llm_start = time.monotonic()
         llm_failed = False
-        is_terminal = False
+        has_flow_nodes = bool(self.state_manager and hasattr(self.state_manager, "nodes") and len(self.state_manager.nodes) > 0)
         try:
-            if self.custom_system_prompt:
+            if not has_flow_nodes and self.custom_system_prompt:
                 from llm.llm import generate_combined_intent_and_response
                 domain = self.agent_config.get("agent_type", "custom")
                 analysis = await asyncio.wait_for(

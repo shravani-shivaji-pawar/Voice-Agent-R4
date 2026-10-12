@@ -105,16 +105,22 @@ export default function ConversationalFlowCanvas({
     return `intent_${count}`;
   };
 
-  const saveNodesToBackend = async (nodesToSave) => {
+  const saveNodesToBackend = async (nodesToSave, customStartNodeId = null) => {
     setSaving(true);
     setSaveError("");
     setSaveSuccess(false);
 
     try {
+      const payload = { nodes: nodesToSave };
+      const startId = customStartNodeId || flowData?.graph?.start_node_id || flowData?.start_node_id || flowData?.editable_flow?.start_node_id;
+      if (startId) {
+        payload.start_node_id = startId;
+      }
+
       const res = await fetch(`${API_BASE}/api/agents/${agent.id}/flow`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nodes: nodesToSave }),
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
@@ -227,25 +233,12 @@ export default function ConversationalFlowCanvas({
 
     // Compute transition graph rewiring based on placement mode
     if (placementMode === "beginning") {
-      const startNode = currentNodes.find(n => n.id === startNodeId);
-      const originalNextTarget = startNode?.transitions?.[0]?.target || currentNodes.find(n => n.id !== startNodeId)?.id || "";
-
-      // New node transitions to start node's previous target
-      if (finalNewNode.type !== "end" && originalNextTarget) {
+      // New node transitions to previous start node
+      if (finalNewNode.type !== "end" && startNodeId) {
         const intent = getUniqueIntent(finalNewNode.transitions);
-        finalNewNode.transitions = [{ intent, label: "Continue", target: originalNextTarget }];
+        finalNewNode.transitions = [{ intent, label: "Continue", target: startNodeId }];
       }
-
-      // Update start node to point to new node
-      updatedNodes = updatedNodes.map(n => {
-        if (n.id === startNodeId) {
-          const transitions = n.transitions?.length > 0
-            ? n.transitions.map((t, idx) => idx === 0 ? { ...t, target: finalNewNode.id } : t)
-            : [{ intent: "confirm", label: "Start", target: finalNewNode.id }];
-          return { ...n, transitions };
-        }
-        return n;
-      });
+      // Note: Previous start node preserves its own outgoing transitions to the rest of the flow
     } else if (placementMode === "before") {
       if (!targetNodeId) {
         setSaveError("Please select a target node to insert before.");
@@ -373,9 +366,14 @@ export default function ConversationalFlowCanvas({
 
     // Insert finalNewNode at the exact requested position in the node list
     let insertIndex = updatedNodes.length;
+    let newStartNodeId = null;
     if (placementMode === "beginning") {
-      const startIndex = updatedNodes.findIndex(n => n.id === startNodeId);
-      insertIndex = startIndex >= 0 ? startIndex + 1 : 0;
+      insertIndex = 0;
+      newStartNodeId = finalNewNode.id;
+      if (finalNewNode.type !== "end" && (!finalNewNode.transitions || finalNewNode.transitions.length === 0)) {
+        const intent = getUniqueIntent([]);
+        finalNewNode.transitions = [{ intent, label: "Continue", target: startNodeId }];
+      }
     } else if (placementMode === "before") {
       const targetIndex = updatedNodes.findIndex(n => n.id === targetNodeId);
       insertIndex = targetIndex >= 0 ? targetIndex : updatedNodes.length;
@@ -388,7 +386,7 @@ export default function ConversationalFlowCanvas({
     }
     updatedNodes.splice(insertIndex, 0, finalNewNode);
 
-    const success = await saveNodesToBackend(updatedNodes);
+    const success = await saveNodesToBackend(updatedNodes, newStartNodeId);
     if (success) {
       setShowAddModal(false);
       setNewNodeData(null);
